@@ -2,19 +2,37 @@
 #include "alg.h"
 #include "../../gui_tools/src/Gui/Gui.hpp"
 
+const long double EPS = 10;
+
+int GeometryVisual::point_searcher(GPoint p) {
+  for (int i = 0; i < this->points.size(); i++) {
+    if (AlgGeom::CoreGeometryTools::dist_points(
+      AlgGeom::Point(p.x_pos, p.y_pos),
+      AlgGeom::Point(this->points[i].x_pos, this->points[i].y_pos)
+    ) <= EPS) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& window, gui::Menu& menu) {
   if (event.type == sf::Event::MouseButtonPressed) {
     GPoint p(event.mouseButton.x, event.mouseButton.y);
-    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 1) {
+    int index_search = this->point_searcher(p);
+    if (index_search != -1 && event.mouseButton.button == sf::Mouse::Left && this->current_tool == 1) {
       this->points.push_back(p);
+    }
+    if (index_search == -1) {
+      this->points.push_back(p);
+    } else {
+      p = this->points[index_search];
     }
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 2) {
       this->live_stack.push_back(p);
-      this->points.push_back(p);
     }
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 3) {
       this->live_stack.push_back(p);
-      this->points.push_back(p);
     }
   }
   

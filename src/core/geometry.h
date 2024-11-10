@@ -17,6 +17,7 @@ class GeometryVisual {
  public:
   int current_tool = 0;
 
+  int point_searcher(GPoint p);
   void handleEvent(const sf::Event& event, sf::RenderWindow& window, gui::Menu& menu);
   void draw(sf::RenderWindow& window);
   GeometryVisual() {}
