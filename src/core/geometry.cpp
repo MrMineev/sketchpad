@@ -15,13 +15,13 @@ string GeometryVisual::new_point(int pos, ld x, ld y) {
   return res;
 }
 
-pair<pair<int, int>, GPoint> GeometryVisual::point_searcher(GPoint p) {
+pair<pair<int, pair<int, int>>, GPoint> GeometryVisual::point_searcher(GPoint p) {
   for (int i = 0; i < this->points.size(); i++) {
     if (AlgGeom::CoreGeometryTools::dist_points(
       AlgGeom::Point(p.x_pos, p.y_pos),
       AlgGeom::Point(this->points[i].x_pos, this->points[i].y_pos)
     ) <= EPS) {
-      return make_pair(make_pair(i, -1), this->points[i]);
+      return make_pair(make_pair(i, make_pair(-1, -1)), this->points[i]);
     }
   }
   for (int i = 0; i < this->lines.size(); i++) {
@@ -40,10 +40,31 @@ pair<pair<int, int>, GPoint> GeometryVisual::point_searcher(GPoint p) {
           AlgGeom::Point(this->lines[i].x2, this->lines[i].y2)
         )
       );
-      return make_pair(make_pair(-1, i), GPoint(new_loc.x, new_loc.y));
+      return make_pair(make_pair(-1, make_pair(i, -1)), GPoint(new_loc.x, new_loc.y));
     }
   }
-  return make_pair(make_pair(-1, -1), p);
+  for (int i = 0; i < this->circles.size(); i++) {
+    ld dist = abs(this->circles[i].radius - AlgGeom::CoreGeometryTools::dist_points(
+      AlgGeom::Point(p.x_pos, p.y_pos),
+      AlgGeom::Point(
+        this->circles[i].x_pos, this->circles[i].y_pos
+      )
+    ));
+    cout << "distance = " << dist << endl;
+    if (dist <= EPS) {
+      AlgGeom::Point new_loc = AlgGeom::CoreGeometryTools::project_point_to_circle(
+        AlgGeom::Point(p.x_pos, p.y_pos),
+        AlgGeom::Circle(
+          AlgGeom::Point(this->circles[i].x_pos, this->circles[i].y_pos),
+          this->circles[i].radius
+        )
+      );
+      cout << "old = {" << p.x_pos << " " << p.y_pos << "}" << endl;
+      cout << "new_loc = {" << new_loc.x << " " << new_loc.y << endl;
+      return make_pair(make_pair(-1, make_pair(-1, i)), GPoint(new_loc.x, new_loc.y));
+    }
+  }
+  return make_pair(make_pair(-1, make_pair(-1, -1)), p);
 }
 
 void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& window, gui::Menu& menu) {
@@ -52,7 +73,8 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
 
     GPoint _p(event.mouseButton.x, event.mouseButton.y);
     auto [_indexes, p] = this->point_searcher(_p);
-    auto [index_search, line_search] = _indexes;
+    auto [index_search, _object_search] = _indexes;
+    auto [line_search, circle_search] = _object_search;
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 1) {
       if (index_search == -1) {
         this->points.push_back(p);
@@ -110,6 +132,23 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
           this->live_stack.push_back(p);
         }
       }
+    }
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 9) {
+      cout << "POP! " << this->live_stack_lines.size() << endl;
+      if (this->live_stack_circles.size() == 1) {
+        if (line_search != -1) {
+          this->live_stack_lines.push_back(this->lines[line_search]);
+        } else if (circle_search != -1) {
+          this->live_stack_circles.push_back(this->circles[circle_search]);
+        } else {
+          this->live_stack.push_back(p);
+        }
+      } else {
+        this->live_stack_circles.push_back(this->circles[circle_search]);
+      }
+    }
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 10) {
+      this->live_stack.push_back(p);
     }
   }
   
@@ -228,6 +267,58 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       gen.first.first, gen.first.second, gen.second.first, gen.second.second,
       false
     ));
+
+    this->live_stack.clear();
+    this->live_stack_lines.clear();
+    this->live_stack_circles.clear();
+  }
+
+  if (this->current_tool == 9 && this->live_stack_circles.size() >= 1 && this->live_stack.size() + this->live_stack_lines.size() + this->live_stack_circles.size() == 2) {
+    if (this->live_stack.size() == 1) {
+      AlgGeom::Point p = AlgGeom::CoreGeometryTools::inversion_point(
+        AlgGeom::Point(this->live_stack[0].x_pos, this->live_stack[0].y_pos),
+        AlgGeom::Circle(
+          AlgGeom::Point(
+            this->live_stack_circles[0].x_pos, this->live_stack_circles[0].y_pos
+          ),
+          this->live_stack_circles[0].radius
+        )
+      );
+      this->points.push_back(
+        GPoint(p.x, p.y)
+      );
+    } else if (this->live_stack_lines.size() == 1) {
+      AlgGeom::Circle l = AlgGeom::CoreGeometryTools::inversion_line(
+        AlgGeom::Line(
+          AlgGeom::Point(this->live_stack_lines[0].x1, this->live_stack_lines[0].y1),
+          AlgGeom::Point(this->live_stack_lines[0].x2, this->live_stack_lines[0].y2)
+        ),
+        AlgGeom::Circle(
+          AlgGeom::Point(
+            this->live_stack_circles[0].x_pos, this->live_stack_circles[0].y_pos
+          ),
+          this->live_stack_circles[0].radius
+        )
+      );
+      this->circles.push_back(
+        GCircle(l.p.x, l.p.y, l.radius)
+      );
+    }
+    
+    this->live_stack.clear();
+    this->live_stack_lines.clear();
+    this->live_stack_circles.clear();
+  }
+
+  if (this->current_tool == 10 && this->live_stack.size() >= 3) {
+    AlgGeom::Point p = AlgGeom::CoreGeometryTools::incenter(
+      AlgGeom::Point(this->live_stack[0].x_pos, this->live_stack[0].y_pos),
+      AlgGeom::Point(this->live_stack[1].x_pos, this->live_stack[1].y_pos),
+      AlgGeom::Point(this->live_stack[2].x_pos, this->live_stack[2].y_pos)
+    );
+    this->points.push_back(
+      GPoint(p.x, p.y)
+    );
 
     this->live_stack.clear();
     this->live_stack_lines.clear();

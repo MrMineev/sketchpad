@@ -24,7 +24,7 @@ class GeometryVisual {
   std::string protocol = "";
 
   std::string new_point(int pos, long double x, long double y);
-  std::pair<std::pair<int, int>, GPoint> point_searcher(GPoint p);
+  std::pair<std::pair<int, std::pair<int, int>>, GPoint> point_searcher(GPoint p);
   void handleEvent(const sf::Event& event, sf::RenderWindow& window, gui::Menu& menu);
   void draw(sf::RenderWindow& window);
   GeometryVisual(int _MENU_BORDER) {

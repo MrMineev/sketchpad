@@ -41,6 +41,14 @@ struct Line {
   Line() {}
 };
 
+struct Circle {
+  Point p;
+  ld radius;
+
+  Circle(Point _p, ld _r) : p(_p), radius(_r) {}
+  Circle() {}
+};
+
 class CoreGeometryTools {
  public:
   // midpoint
@@ -90,6 +98,46 @@ class CoreGeometryTools {
   static Point project_point_to_line(Point p, Line l) {
     Line n_l = AlgGeom::CoreGeometryTools::perp_normal(p, l);
     return AlgGeom::CoreGeometryTools::inter_lines(l, n_l);
+  }
+
+  static Point project_point_to_circle(Point p, Circle c) {
+    ld ratio = c.radius / AlgGeom::CoreGeometryTools::dist_points(p, c.p);
+    return AlgGeom::Point(
+      c.p.x + (p.x - c.p.x) * ratio,
+      c.p.y + (p.y - c.p.y) * ratio
+    );
+  }
+
+  static Point inversion_point(Point p, Circle c) {
+    ld k = c.radius * c.radius / (
+      AlgGeom::CoreGeometryTools::dist_points(p, c.p) *
+      AlgGeom::CoreGeometryTools::dist_points(p, c.p)
+    );
+    return AlgGeom::Point(
+      c.p.x + k * (p.x - c.p.x),
+      c.p.y + k * (p.y - c.p.y)
+    );
+  }
+
+  static Circle inversion_line(Line l, Circle c) {
+    // Step 1: Calculate the distance from the center of circle C to the line L
+    Point P_closest = AlgGeom::CoreGeometryTools::project_point_to_line(c.p, l);
+    Point image = AlgGeom::CoreGeometryTools::inversion_point(P_closest, c);
+    Point m = AlgGeom::CoreGeometryTools::midpoint(image, c.p);
+    ld inverted_radius = AlgGeom::CoreGeometryTools::dist_points(m, c.p);
+    return Circle(m, inverted_radius);
+  }
+  
+
+  static Point incenter(Point p1, Point p2, Point p3) {
+    ld a = AlgGeom::CoreGeometryTools::dist_points(p2, p3);
+    ld b = AlgGeom::CoreGeometryTools::dist_points(p1, p3);
+    ld c = AlgGeom::CoreGeometryTools::dist_points(p1, p2);
+    
+    ld x = (a * p1.x + b * p2.x + c * p3.x) / (a + b + c);
+    ld y = (a * p1.y + b * p2.y + c * p3.y) / (a + b + c);
+
+    return AlgGeom::Point(x, y);
   }
 };
 

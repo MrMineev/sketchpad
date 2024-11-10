@@ -2,13 +2,14 @@
 
 class GCircle {
 public:
-  float x_pos, y_pos;
+  float x_pos, y_pos, radius;
 
   sf::CircleShape shape;
 
-  GCircle(float x, float y, float radius) {
+  GCircle(float x, float y, float _radius) {
     x_pos = x;
     y_pos = y;
+    radius = _radius;
     shape.setRadius(radius);
     shape.setFillColor(sf::Color::Transparent);
     shape.setOutlineColor(sf::Color::Green);

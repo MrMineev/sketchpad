@@ -32,7 +32,9 @@ struct ToolView {
     "Circle (three points)",
     "Line",
     "Intersect Lines",
-    "Perpendicular Normal"
+    "Perpendicular Normal",
+    "Inversion (Partial)",
+    "Incenter"
   };
 
   void draw_tools(sf::RenderWindow &window) {
