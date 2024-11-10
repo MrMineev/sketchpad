@@ -1,25 +1,28 @@
 #include <SFML/Graphics.hpp>
 
-class Point {
+class GPoint {
 public:
-    sf::CircleShape shape;
+  float x_pos, y_pos;
+  sf::CircleShape shape;
 
-    Point(float x, float y) {
-        shape.setRadius(5);
-        shape.setFillColor(sf::Color::Red);
-        shape.setPosition(x - shape.getRadius(), y - shape.getRadius());
-    }
+  GPoint(float x, float y) {
+    x_pos = x;
+    y_pos = y;
+    shape.setRadius(5);
+    shape.setFillColor(sf::Color::Red);
+    shape.setPosition(x - shape.getRadius(), y - shape.getRadius());
+  }
 
-    void setPosition(float x, float y) {
-        shape.setPosition(x - shape.getRadius(), y - shape.getRadius());
-    }
+  void setPosition(float x, float y) {
+    shape.setPosition(x - shape.getRadius(), y - shape.getRadius());
+  }
 
-    void draw(sf::RenderWindow& window) {
-        window.draw(shape);
-    }
+  void draw(sf::RenderWindow& window) {
+    window.draw(shape);
+  }
 
-    sf::Vector2f getPosition() const {
-        return shape.getPosition();
-    }
+  sf::Vector2f getPosition() const {
+    return shape.getPosition();
+  }
 };
 

@@ -8,11 +8,11 @@
 
 class GeometryVisual {
  private:
-  std::vector<Point> points;
-  std::vector<Line> lines;
-  std::vector<Circle> circles;
+  std::vector<GPoint> points;
+  std::vector<GLine> lines;
+  std::vector<GCircle> circles;
 
-  std::vector<Point> live_stack;
+  std::vector<GPoint> live_stack;
 
  public:
   int current_tool = 0;
