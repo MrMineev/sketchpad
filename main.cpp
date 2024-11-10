@@ -70,7 +70,7 @@ signed main() {
     text.setString(geomv.protocol);
     text.setCharacterSize(12);
     text.setFillColor(sf::Color::Black);
-    text.setPosition(10, 350);
+    text.setPosition(10, 380);
     window.draw(text);
 
     window.display();

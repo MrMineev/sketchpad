@@ -4,6 +4,8 @@ class GCircle {
 public:
   float x_pos, y_pos, radius;
 
+  int index = 0;
+
   sf::CircleShape shape;
 
   GCircle(float x, float y, float _radius) {

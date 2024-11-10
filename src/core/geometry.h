@@ -28,6 +28,9 @@ class GeometryVisual {
 
   std::string new_point(int pos, long double x, long double y);
   std::string new_circumcircle(int pos, int x, int y, int z);
+  std::string new_incenter(int pos, int x, int y, int z);
+  std::string new_excenter(int pos, int x, int y, int z);
+  std::string new_inter_lc(int pos1, int pos2, int x, int y);
   std::string new_midpoint(int pos, int x, int y);
   std::string new_perp_normal(int pos, int x, int y);
   std::string new_line_intersection(int pos, int x, int y);

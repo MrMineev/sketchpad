@@ -151,6 +151,65 @@ class CoreGeometryTools {
     return AlgGeom::Point(x, y);
   }
 
+  static pair<Point, Point> inter_lc(Line l, Circle c) {
+    cout << "l = " << l.a << " " << l.b << " " << l.c << endl;
+    cout << "c = " << c.p.x << " " << c.p.y << " "<< c.radius << endl;
+
+    // Step 1: Translate the line and circle so the circle center is at the origin.
+    ld cx = c.p.x;
+    ld cy = c.p.y;
+    ld a = l.a;
+    ld b = l.b;
+    ld c_adjusted = l.c + a * cx + b * cy; // Shift constant term to match the new origin
+
+    // Step 2: If b != 0, we solve for y in terms of x; otherwise, solve as a vertical line
+    if (b != 0) {
+        // If b != 0, the line can be expressed as y = mx + n
+        ld m = -a / b;
+        ld n = -c_adjusted / b;
+
+        // Substitute y = mx + n into the circle equation: x^2 + y^2 = R^2
+        // which becomes x^2 + (mx + n)^2 = R^2
+        ld A = 1 + m * m;
+        ld B = 2 * m * n;
+        ld C = n * n - c.radius * c.radius;
+
+        // Calculate the discriminant to solve the quadratic equation
+        ld discriminant = B * B - 4 * A * C;
+        if (discriminant < 0) {
+            throw runtime_error("No intersection points (line does not intersect the circle).");
+        }
+
+        // Solve for x values using the quadratic formula
+        ld sqrt_disc = sqrt(discriminant);
+        ld x1 = (-B + sqrt_disc) / (2 * A);
+        ld x2 = (-B - sqrt_disc) / (2 * A);
+
+        // Corresponding y values
+        ld y1 = m * x1 + n;
+        ld y2 = m * x2 + n;
+
+        // Step 3: Translate the points back to the original circle center
+        return {Point(x1 + cx, y1 + cy), Point(x2 + cx, y2 + cy)};
+    } else {
+        // Special case: vertical line (a != 0, b == 0), so x = -c_adjusted / a
+        ld x = -c_adjusted / a;
+        // Substitute x into the circle equation to find corresponding y values
+        ld D = c.radius * c.radius - (x * x);
+        if (D < 0) {
+            throw runtime_error("No intersection points (line does not intersect the circle).");
+        }
+
+        // Compute y values
+        ld sqrt_D = sqrt(D);
+        ld y1 = sqrt_D;
+        ld y2 = -sqrt_D;
+
+        // Translate points back
+        return {Point(x + cx, y1 + cy), Point(x + cx, y2 + cy)};
+    }
+}
+
 };
 
 }
