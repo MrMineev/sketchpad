@@ -31,6 +31,12 @@ signed main() {
   gui::Theme::loadFont("gui_assets/demo/tahoma.ttf");
   gui::Theme::loadTexture("gui_assets/demo/texture-default.png");
 
+  sf::Font font;
+  if (!font.loadFromFile("gui_assets/demo/tahoma.ttf")) {
+    std::cerr << "Error loading font!" << std::endl;
+    return -1;
+  }
+
   gui::TextBox *command_prompt = new gui::TextBox();
   menu.add(command_prompt);
 
@@ -56,9 +62,16 @@ signed main() {
       }
     }
 
-    toolbar.draw_tools(window);
     geomv.draw(window);
-    // window.draw(menu);
+    toolbar.draw_tools(window);
+
+    sf::Text text;
+    text.setFont(font);
+    text.setString(geomv.protocol);
+    text.setCharacterSize(12);
+    text.setFillColor(sf::Color::Black);
+    text.setPosition(10, 300);
+    window.draw(text);
 
     window.display();
     window.clear(backgroundColor);

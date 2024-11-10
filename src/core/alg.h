@@ -19,7 +19,7 @@ struct Point {
 };
 
 struct Line {
-  ld a, b, c; // ax + by = c
+  ld a, b, c; // ax + by + c = 0
 
   Line(Point p1, Point p2) {
     // | x    y    1|
@@ -28,6 +28,13 @@ struct Line {
     a = det(p1.y, 1, p2.y, 1);
     b = -det(p1.x, 1, p2.x, 1);
     c = det(p1.x, p1.y, p2.x, p2.y);
+  }
+
+  pair<pair<ld, ld>, pair<ld, ld>> gen_points() {
+    return make_pair(
+      make_pair(0, -c / b),
+      make_pair(-c / a, 0)
+    );
   }
 
   Line(ld _a, ld _b, ld _c) : a(_a), b(_b), c(_c) {}
@@ -43,9 +50,9 @@ class CoreGeometryTools {
 
   // equation for a line through P perpendicular to L
   static Line perp_normal(Point p, Line l) {
-    ld a = -l.b;
-    ld b = l.a;
-    ld c = a * p.x + b * p.y;
+    ld a = l.b;
+    ld b = -l.a;
+    ld c = - a * p.x - b * p.y;
     return Line{a, b, c};
   }
 
@@ -66,13 +73,23 @@ class CoreGeometryTools {
     }
 
     // Using Cramer's rule to find the intersection point:
-    ld x = det(l1.c, l1.b, l2.c, l2.b) / det_val;
-    ld y = det(l1.a, l1.c, l2.a, l2.c) / det_val;
+    ld x = det(-l1.c, l1.b, -l2.c, l2.b) / det_val;
+    ld y = det(l1.a, -l1.c, l2.a, -l2.c) / det_val;
     return Point(x, y);
   }
 
   static long double dist_points(Point p1, Point p2) {
     return sqrt((p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y));
+  }
+
+  // Distance from a point to a line
+  static long double dist_point_to_line(Point p, Line l) {
+    return abs(l.a * p.x + l.b * p.y + l.c) / sqrt(l.a * l.a + l.b * l.b);
+  }
+
+  static Point project_point_to_line(Point p, Line l) {
+    Line n_l = AlgGeom::CoreGeometryTools::perp_normal(p, l);
+    return AlgGeom::CoreGeometryTools::inter_lines(l, n_l);
   }
 };
 

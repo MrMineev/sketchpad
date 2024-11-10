@@ -26,10 +26,13 @@ struct ToolView {
   vector<string> tools_names = {
     "Mouse",
     "Point",
-    "Line",
+    "Segment",
     "Circle",
     "Midpoint",
-    "Circle (three points)"
+    "Circle (three points)",
+    "Line",
+    "Intersect Lines",
+    "Perpendicular Normal"
   };
 
   void draw_tools(sf::RenderWindow &window) {
