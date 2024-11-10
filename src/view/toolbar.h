@@ -21,12 +21,19 @@ typedef vector<vvll> vvvll;
 struct ToolView {
   gui::Menu* menu;
   GeometryVisual* geomv;
+  sf::RectangleShape rectangle;
 
   vector<string> tools_names = {
-    "Mouse", "Point", "Line", "Circle"
+    "Mouse",
+    "Point",
+    "Line",
+    "Circle",
+    "Midpoint",
+    "Circle (three points)"
   };
 
   void draw_tools(sf::RenderWindow &window) {
+    window.draw(rectangle);
     window.draw(*menu);
   }
 
@@ -40,10 +47,16 @@ struct ToolView {
     }
   }
 
-  ToolView(gui::Menu* _menu, GeometryVisual* _geomv) {
+  ToolView(gui::Menu* _menu, GeometryVisual* _geomv, int width, int height, int menu_bar_x) {
     menu = _menu;
     geomv = _geomv;
     setup();
+
+    const int w = menu_bar_x;
+    const int h = height;
+    rectangle = sf::RectangleShape(sf::Vector2f((float)w, (float)h));
+    rectangle.setPosition(0, 0);
+    rectangle.setFillColor(sf::Color::White);
   }
 };
 

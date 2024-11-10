@@ -19,6 +19,7 @@ typedef vector<vvll> vvvll;
 
 const ll SCREEN_X = 1200;
 const ll SCREEN_Y = 800;
+const ll MENU_BAR_X = 250;
 
 signed main() {
   std::srand(static_cast<unsigned int>(std::time(nullptr)));
@@ -34,8 +35,8 @@ signed main() {
   menu.add(command_prompt);
 
   sf::Color backgroundColor = sf::Color(252, 242, 172);
-  GeometryVisual geomv;
-  ToolView toolbar(&menu, &geomv);
+  GeometryVisual geomv(MENU_BAR_X);
+  ToolView toolbar(&menu, &geomv, SCREEN_X, SCREEN_Y, MENU_BAR_X);
 
   while (window.isOpen()) {
     sf::Event event;

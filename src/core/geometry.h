@@ -14,11 +14,15 @@ class GeometryVisual {
 
   std::vector<GPoint> live_stack;
 
+  int X_MENU_BORDER;
+
  public:
   int current_tool = 0;
 
   int point_searcher(GPoint p);
   void handleEvent(const sf::Event& event, sf::RenderWindow& window, gui::Menu& menu);
   void draw(sf::RenderWindow& window);
-  GeometryVisual() {}
+  GeometryVisual(int _MENU_BORDER) {
+    X_MENU_BORDER = _MENU_BORDER;
+  }
 };
