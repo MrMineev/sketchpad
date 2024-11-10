@@ -13,6 +13,7 @@ class GLine {
   }
 
  public:
+  int index = 0;
   bool is_segment = false;
   float x1, y1, x2, y2;
   sf::VertexArray line;

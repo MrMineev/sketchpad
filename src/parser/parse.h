@@ -1,6 +1,7 @@
 #pragma once
 
-#include <any>
+#include <string>
+#include <vector>
 
-std::vector<std::any> parse(std::string s);
+std::vector<std::string> tokenize(std::string &s);
 

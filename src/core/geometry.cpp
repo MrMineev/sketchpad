@@ -1,12 +1,80 @@
 #include "geometry.h"
 #include "alg.h"
 #include "../../gui_tools/src/Gui/Gui.hpp"
+#include "../parser/parse.h"
 
 typedef long double ld;
 
 const long double EPS = 10;
 
-string GeometryVisual::new_line(int pos, int x, int y) {
+string GeometryVisual::new_perp_normal(int pos, int x, int y) {
+  cout << pos << " " << x << " " << y << endl;
+  string res = "";
+  char c = 'a' + pos;
+  char cx = 'A' + x;
+  char cy = 'a' + y;
+  res += "\n";
+  res += c;
+  res += " = PERP_NORMAL ";
+  res += cx;
+  res += " ";
+  res += cy;
+  res += ';';
+  return res;
+}
+
+string GeometryVisual::new_line_intersection(int pos, int x, int y) {
+  cout << pos << " " << x << " " << y << endl;
+  string res = "";
+  char c = 'A' + pos;
+  char cx = 'a' + x;
+  char cy = 'a' + y;
+  res += "\n";
+  res += c;
+  res += " = INTER_LL ";
+  res += cx;
+  res += " ";
+  res += cy;
+  res += ';';
+  return res;
+}
+
+string GeometryVisual::new_circumcircle(int pos, int x, int y, int z) {
+  cout << pos << " " << x << " " << y << endl;
+  string res = "";
+  char c = (char)(149 + pos);
+  char cx = 'A' + x;
+  char cy = 'A' + y;
+  char cz = 'A' + z;
+  res += "\n";
+  res += c;
+  res += " = CIRCUMCIRCLE ";
+  res += cx;
+  res += " ";
+  res += cy;
+  res += " ";
+  res += cz;
+  res += ';';
+  return res;
+}
+
+string GeometryVisual::new_midpoint(int pos, int x, int y) {
+  cout << pos << " " << x << " " << y << endl;
+  string res = "";
+  char c = 'A' + pos;
+  char cx = 'A' + x;
+  char cy = 'A' + y;
+  res += "\n";
+  res += c;
+  res += " = MIDPOINT ";
+  res += cx;
+  res += " ";
+  res += cy;
+  res += ';';
+  return res;
+}
+
+string GeometryVisual::new_line(int pos, int x, int y, bool state) {
   cout << pos << " " << x << " " << y << endl;
   string res = "";
   char c = 'a' + pos;
@@ -18,6 +86,24 @@ string GeometryVisual::new_line(int pos, int x, int y) {
   res += cx;
   res += " ";
   res += cy;
+  res += " ";
+  res += (char)('0' + state);
+  res += ';';
+  return res;
+}
+
+string GeometryVisual::new_circle(int pos, int pos1, int pos2) {
+  string res = "";
+  char c = (char)(149 + pos);
+  char cx = 'A' + pos1;
+  char cy = 'A' + pos2;
+  res += "\n";
+  res += c;
+  res += " = MAKE_CIRCLE ";
+  res += cx;
+  res += " ";
+  res += cy;
+  res += ';';
   return res;
 }
 
@@ -26,8 +112,114 @@ string GeometryVisual::new_point(int pos, long double x, long double y) {
   char c = 'A' + this->points.size() - 1;
   res += "\n";
   res += c;
-  res += " = (" + to_string(x) + " " + to_string(y) + ")";
+  res += " = (" + to_string(x) + " " + to_string(y) + ");";
   return res;
+}
+
+void GeometryVisual::rebuild() {
+  this->lines.clear();
+  this->circles.clear();
+
+  vector<string> tokens = tokenize(this->protocol);
+
+  int ptr = 0;
+  while (ptr < tokens.size()) {
+    if (tokens[ptr] == "MAKE_LINE") {
+      int p1 = (int)tokens[ptr + 1][0] - (int)'A';
+      int p2 = (int)tokens[ptr + 2][0] - (int)'A';
+      int p3 = (int)tokens[ptr + 3][0] - (int)'0';
+      this->lines.push_back(
+        GLine(
+          this->points[p1].x_pos, this->points[p1].y_pos,
+          this->points[p2].x_pos, this->points[p2].y_pos,
+          p3
+        )
+      );
+      ptr += 4;
+    } else if (tokens[ptr] == "MAKE_CIRCLE") {
+      int p1 = (int)tokens[ptr + 1][0] - (int)'A';
+      int p2 = (int)tokens[ptr + 2][0] - (int)'A';
+      this->circles.push_back(
+        GCircle(
+          this->points[p1].x_pos, this->points[p1].y_pos,
+          AlgGeom::CoreGeometryTools::dist_points(
+            AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
+            AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos)
+          )
+        )
+      );
+      ptr += 3;
+    } else if (tokens[ptr] == "MIDPOINT") {
+      int p = (int)tokens[ptr - 1][0] - (int)'A';
+      int p1 = (int)tokens[ptr + 1][0] - (int)'A';
+      int p2 = (int)tokens[ptr + 2][0] - (int)'A';
+      AlgGeom::Point new_loc = AlgGeom::CoreGeometryTools::midpoint(
+        AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
+        AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos)
+      );
+      this->points[p] = GPoint(new_loc.x, new_loc.y);
+      ptr += 3;
+    } else if (tokens[ptr] == "CIRCUMCIRCLE") {
+      int p1 = (int)tokens[ptr + 1][0] - (int)'A';
+      int p2 = (int)tokens[ptr + 2][0] - (int)'A';
+      int p3 = (int)tokens[ptr + 3][0] - (int)'A';
+
+      // cout << "DRAWING = " << p1 << " " << p2 << " " << p3 << endl;
+
+      AlgGeom::Line l1 = AlgGeom::CoreGeometryTools::perp_bisector(
+        AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
+        AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos)
+      );
+      AlgGeom::Line l2 = AlgGeom::CoreGeometryTools::perp_bisector(
+        AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos),
+        AlgGeom::Point(this->points[p3].x_pos, this->points[p3].y_pos)
+      );
+      AlgGeom::Point p = AlgGeom::CoreGeometryTools::inter_lines(l1, l2);
+      this->circles.push_back(GCircle(
+        p.x, p.y, AlgGeom::CoreGeometryTools::dist_points(
+          p, AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos)
+        )
+      ));
+
+      ptr += 4;
+    } else if (tokens[ptr] == "INTER_LL") {
+      int p = (int)tokens[ptr - 1][0] - (int)'A';
+      int p1 = (int)tokens[ptr + 1][0] - (int)'a';
+      int p2 = (int)tokens[ptr + 2][0] - (int)'a';
+      AlgGeom::Line l1 = AlgGeom::Line(
+        AlgGeom::Point(this->lines[p1].x1, this->lines[p1].y1),
+        AlgGeom::Point(this->lines[p1].x2, this->lines[p1].y2)
+      );
+      AlgGeom::Line l2 = AlgGeom::Line(
+        AlgGeom::Point(this->lines[p2].x1, this->lines[p2].y1),
+        AlgGeom::Point(this->lines[p2].x2, this->lines[p2].y2)
+      );
+      AlgGeom::Point new_loc = AlgGeom::CoreGeometryTools::inter_lines(l1, l2);
+      this->points[p] = GPoint(new_loc.x, new_loc.y);
+
+      ptr += 3;
+    } else if (tokens[ptr] == "PERP_NORMAL") {
+      int p1 = (int)tokens[ptr + 1][0] - (int)'A';
+      int p2 = (int)tokens[ptr + 2][0] - (int)'a';
+      cout << "locations_1 = {" << this->points[p1].x_pos << this->points[p1].y_pos << endl;
+      AlgGeom::Line l = AlgGeom::CoreGeometryTools::perp_normal(
+        AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
+        AlgGeom::Line(
+          AlgGeom::Point(this->lines[p2].x1, this->lines[p2].y1),
+          AlgGeom::Point(this->lines[p2].x2, this->lines[p2].y2)
+        )
+      );
+      pair<pair<ld, ld>, pair<ld, ld>> gen = l.gen_points();
+      this->lines.push_back(GLine(
+        gen.first.first, gen.first.second, gen.second.first, gen.second.second,
+        false
+      ));
+
+      ptr += 3;
+    } else {
+      ptr++;
+    }
+  }
 }
 
 pair<pair<int, pair<int, int>>, GPoint> GeometryVisual::point_searcher(GPoint p) {
@@ -65,7 +257,6 @@ pair<pair<int, pair<int, int>>, GPoint> GeometryVisual::point_searcher(GPoint p)
         this->circles[i].x_pos, this->circles[i].y_pos
       )
     ));
-    cout << "distance = " << dist << endl;
     if (dist <= EPS) {
       AlgGeom::Point new_loc = AlgGeom::CoreGeometryTools::project_point_to_circle(
         AlgGeom::Point(p.x_pos, p.y_pos),
@@ -74,8 +265,6 @@ pair<pair<int, pair<int, int>>, GPoint> GeometryVisual::point_searcher(GPoint p)
           this->circles[i].radius
         )
       );
-      cout << "old = {" << p.x_pos << " " << p.y_pos << "}" << endl;
-      cout << "new_loc = {" << new_loc.x << " " << new_loc.y << endl;
       return make_pair(make_pair(-1, make_pair(-1, i)), GPoint(new_loc.x, new_loc.y));
     }
   }
@@ -100,7 +289,7 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 1) {
       if (index_search == -1) {
         this->points.push_back(p);
-        protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
+        // protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
       }
     }
     
@@ -109,7 +298,7 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       if (index_search == -1) {
         p.index = this->points.size();
         this->points.push_back(p);
-        protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
+        // protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
       }
       this->live_stack.push_back(p);
     }
@@ -118,7 +307,7 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       if (index_search == -1) {
         p.index = this->points.size();
         this->points.push_back(p);
-        protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
+        // protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
       }
       this->live_stack.push_back(p);
     }
@@ -127,34 +316,42 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       if (index_search == -1) {
         p.index = this->points.size();
         this->points.push_back(p);
-        protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
+        // protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
       }
       this->live_stack.push_back(p);
     }
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 5) {
-      this->live_stack.push_back(p);
+      p.index = index_search;
       if (index_search == -1) {
+        p.index = this->points.size();
         this->points.push_back(p);
-        protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
+        // protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
       }
+      this->live_stack.push_back(p);
     }
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 6) {
-      this->live_stack.push_back(p);
+      p.index = index_search;
       if (index_search == -1) {
+        p.index = this->points.size();
         this->points.push_back(p);
-        protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
+        // protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
       }
+      this->live_stack.push_back(p);
     }
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 7) {
       this->live_stack_lines.push_back(this->lines[line_search]);
+      this->live_stack_lines[this->live_stack_lines.size() - 1].index = line_search;
     }
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 8) {
       if (this->live_stack_lines.size() == 1) {
+        p.index = index_search;
         this->live_stack.push_back(p);
       } else {
         if (line_search != -1) {
+          this->lines[line_search].index = line_search;
           this->live_stack_lines.push_back(this->lines[line_search]);
         } else {
+          p.index = index_search;
           this->live_stack.push_back(p);
         }
       }
@@ -188,6 +385,9 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
   if (isDragging) {
     sf::Vector2i mousePos = sf::Mouse::getPosition(window);
     this->points[follower] = GPoint(mousePos.x, mousePos.y);
+    cout << "UPDATE = {" << this->points[follower].x_pos << " " << this->points[follower].y_pos << endl;
+
+    this->rebuild();
   }
   
   if (this->current_tool == 2 && this->live_stack.size() >= 2) {
@@ -198,7 +398,7 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       this->live_stack[1].y_pos
     ));
 
-    protocol += GeometryVisual::new_line(this->lines.size() - 1, this->live_stack[0].index, this->live_stack[1].index);
+    protocol += GeometryVisual::new_line(this->lines.size() - 1, this->live_stack[0].index, this->live_stack[1].index, true);
 
     this->live_stack.clear();
     this->live_stack_lines.clear();
@@ -220,6 +420,8 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
         )
       )
     ));
+    
+    protocol += GeometryVisual::new_circle(this->circles.size() - 1, this->live_stack[0].index, this->live_stack[1].index);
 
     this->live_stack.clear();
     this->live_stack_lines.clear();
@@ -231,6 +433,8 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       (this->live_stack[0].x_pos + this->live_stack[1].x_pos) / 2,
       (this->live_stack[0].y_pos + this->live_stack[1].y_pos) / 2
     ));
+
+    protocol += GeometryVisual::new_midpoint(this->points.size() - 1, this->live_stack[0].index, this->live_stack[1].index);
 
     this->live_stack.clear();
     this->live_stack_lines.clear();
@@ -257,6 +461,8 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       )
     ));
 
+    protocol += GeometryVisual::new_circumcircle(this->circles.size() - 1, this->live_stack[0].index, this->live_stack[1].index, this->live_stack[2].index);
+
     this->live_stack.clear();
     this->live_stack_lines.clear();
     this->live_stack_circles.clear();
@@ -270,6 +476,8 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       this->live_stack[1].y_pos,
       false
     ));
+
+    protocol += GeometryVisual::new_line(this->lines.size() - 1, this->live_stack[0].index, this->live_stack[1].index, false);
 
     this->live_stack.clear();
     this->live_stack_lines.clear();
@@ -289,6 +497,8 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     );
     this->points.push_back(GPoint(p.x, p.y));
 
+    protocol += GeometryVisual::new_line_intersection(this->points.size() - 1, this->live_stack_lines[0].index, this->live_stack_lines[1].index);
+
     this->live_stack.clear();
     this->live_stack_lines.clear();
     this->live_stack_circles.clear();
@@ -307,6 +517,8 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       gen.first.first, gen.first.second, gen.second.first, gen.second.second,
       false
     ));
+
+    protocol += GeometryVisual::new_perp_normal(this->lines.size() - 1, this->live_stack[0].index, this->live_stack_lines[0].index);
 
     this->live_stack.clear();
     this->live_stack_lines.clear();
