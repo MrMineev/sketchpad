@@ -5,6 +5,8 @@ public:
   float x_pos, y_pos;
   sf::CircleShape shape;
 
+  int index;
+
   GPoint(float x, float y) {
     x_pos = x;
     y_pos = y;

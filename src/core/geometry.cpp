@@ -6,7 +6,22 @@ typedef long double ld;
 
 const long double EPS = 10;
 
-string GeometryVisual::new_point(int pos, ld x, ld y) {
+string GeometryVisual::new_line(int pos, int x, int y) {
+  cout << pos << " " << x << " " << y << endl;
+  string res = "";
+  char c = 'a' + pos;
+  char cx = 'A' + x;
+  char cy = 'A' + y;
+  res += "\n";
+  res += c;
+  res += " = MAKE_LINE ";
+  res += cx;
+  res += " ";
+  res += cy;
+  return res;
+}
+
+string GeometryVisual::new_point(int pos, long double x, long double y) {
   string res = "";
   char c = 'A' + this->points.size() - 1;
   res += "\n";
@@ -75,6 +90,13 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     auto [_indexes, p] = this->point_searcher(_p);
     auto [index_search, _object_search] = _indexes;
     auto [line_search, circle_search] = _object_search;
+
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 0) {
+      if (index_search != -1) {
+        isDragging = true;
+        follower = index_search;
+      }
+    }
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 1) {
       if (index_search == -1) {
         this->points.push_back(p);
@@ -83,25 +105,31 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     }
     
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 2) {
-      this->live_stack.push_back(p);
+      p.index = index_search;
       if (index_search == -1) {
+        p.index = this->points.size();
         this->points.push_back(p);
         protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
       }
+      this->live_stack.push_back(p);
     }
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 3) {
-      this->live_stack.push_back(p);
+      p.index = index_search;
       if (index_search == -1) {
+        p.index = this->points.size();
         this->points.push_back(p);
         protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
       }
+      this->live_stack.push_back(p);
     }
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 4) {
-      this->live_stack.push_back(p);
+      p.index = index_search;
       if (index_search == -1) {
+        p.index = this->points.size();
         this->points.push_back(p);
         protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
       }
+      this->live_stack.push_back(p);
     }
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 5) {
       this->live_stack.push_back(p);
@@ -121,9 +149,7 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       this->live_stack_lines.push_back(this->lines[line_search]);
     }
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 8) {
-      cout << "POP! " << this->live_stack_lines.size() << endl;
       if (this->live_stack_lines.size() == 1) {
-        cout << "POINT!" << endl;
         this->live_stack.push_back(p);
       } else {
         if (line_search != -1) {
@@ -134,7 +160,6 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       }
     }
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 9) {
-      cout << "POP! " << this->live_stack_lines.size() << endl;
       if (this->live_stack_circles.size() == 1) {
         if (line_search != -1) {
           this->live_stack_lines.push_back(this->lines[line_search]);
@@ -150,6 +175,19 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 10) {
       this->live_stack.push_back(p);
     }
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 11) {
+      this->live_stack.push_back(p);
+    }
+  }
+  if (event.type == sf::Event::MouseButtonReleased) {
+    if (event.mouseButton.button == sf::Mouse::Left) {
+      isDragging = false;
+    }
+  }
+
+  if (isDragging) {
+    sf::Vector2i mousePos = sf::Mouse::getPosition(window);
+    this->points[follower] = GPoint(mousePos.x, mousePos.y);
   }
   
   if (this->current_tool == 2 && this->live_stack.size() >= 2) {
@@ -159,6 +197,8 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       this->live_stack[1].x_pos,
       this->live_stack[1].y_pos
     ));
+
+    protocol += GeometryVisual::new_line(this->lines.size() - 1, this->live_stack[0].index, this->live_stack[1].index);
 
     this->live_stack.clear();
     this->live_stack_lines.clear();
@@ -312,6 +352,21 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
 
   if (this->current_tool == 10 && this->live_stack.size() >= 3) {
     AlgGeom::Point p = AlgGeom::CoreGeometryTools::incenter(
+      AlgGeom::Point(this->live_stack[0].x_pos, this->live_stack[0].y_pos),
+      AlgGeom::Point(this->live_stack[1].x_pos, this->live_stack[1].y_pos),
+      AlgGeom::Point(this->live_stack[2].x_pos, this->live_stack[2].y_pos)
+    );
+    this->points.push_back(
+      GPoint(p.x, p.y)
+    );
+
+    this->live_stack.clear();
+    this->live_stack_lines.clear();
+    this->live_stack_circles.clear();
+  }
+
+  if (this->current_tool == 11 && this->live_stack.size() >= 3) {
+    AlgGeom::Point p = AlgGeom::CoreGeometryTools::excenter(
       AlgGeom::Point(this->live_stack[0].x_pos, this->live_stack[0].y_pos),
       AlgGeom::Point(this->live_stack[1].x_pos, this->live_stack[1].y_pos),
       AlgGeom::Point(this->live_stack[2].x_pos, this->live_stack[2].y_pos)

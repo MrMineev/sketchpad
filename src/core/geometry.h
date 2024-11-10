@@ -21,9 +21,14 @@ class GeometryVisual {
  public:
   int current_tool = 0;
 
+  bool isDragging = false;
+  int follower = -1;
+
   std::string protocol = "";
 
   std::string new_point(int pos, long double x, long double y);
+  std::string new_line(int pos, int x, int y);
+
   std::pair<std::pair<int, std::pair<int, int>>, GPoint> point_searcher(GPoint p);
   void handleEvent(const sf::Event& event, sf::RenderWindow& window, gui::Menu& menu);
   void draw(sf::RenderWindow& window);

@@ -139,6 +139,18 @@ class CoreGeometryTools {
 
     return AlgGeom::Point(x, y);
   }
+
+  static Point excenter(Point p1, Point p2, Point p3) {
+    ld a = AlgGeom::CoreGeometryTools::dist_points(p2, p3);
+    ld b = AlgGeom::CoreGeometryTools::dist_points(p1, p3);
+    ld c = AlgGeom::CoreGeometryTools::dist_points(p1, p2);
+    
+    ld x = (a * p1.x + b * p2.x - c * p3.x) / (a + b - c);
+    ld y = (a * p1.y + b * p2.y - c * p3.y) / (a + b - c);
+
+    return AlgGeom::Point(x, y);
+  }
+
 };
 
 }

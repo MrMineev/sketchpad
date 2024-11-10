@@ -34,7 +34,8 @@ struct ToolView {
     "Intersect Lines",
     "Perpendicular Normal",
     "Inversion (Partial)",
-    "Incenter"
+    "Incenter",
+    "Excenter"
   };
 
   void draw_tools(sf::RenderWindow &window) {
