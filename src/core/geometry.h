@@ -5,6 +5,9 @@
 #include "primitives/circle.h"
 
 #include "../../gui_tools/src/Gui/Gui.hpp"
+#include "../../json_manager/json/single_include/nlohmann/json.hpp"
+
+using json = nlohmann::json; 
 
 class GeometryVisual {
  private:
@@ -24,9 +27,9 @@ class GeometryVisual {
   bool isDragging = false;
   int follower = -1;
 
-  std::string protocol = "";
+  json protocol;
 
-  std::string new_point(int pos, long double x, long double y);
+  std::string new_point(int pos);
   std::string new_circumcircle(int pos, int x, int y, int z);
   std::string new_incenter(int pos, int x, int y, int z);
   std::string new_excenter(int pos, int x, int y, int z);
@@ -44,5 +47,6 @@ class GeometryVisual {
 
   GeometryVisual(int _MENU_BORDER) {
     X_MENU_BORDER = _MENU_BORDER;
+    protocol = {};
   }
 };

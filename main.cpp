@@ -8,6 +8,7 @@
 #include "src/view/toolbar.h"
 #include "gui_tools/src/Gui/Gui.hpp"
 #include "src/core/geometry.h"
+#include "json_manager/json/single_include/nlohmann/json.hpp"
 
 using namespace std;
 
@@ -67,7 +68,8 @@ signed main() {
 
     sf::Text text;
     text.setFont(font);
-    text.setString(geomv.protocol);
+    text.setString("");
+    // text.setString(geomv.protocol);
     text.setCharacterSize(12);
     text.setFillColor(sf::Color::Black);
     text.setPosition(10, 380);

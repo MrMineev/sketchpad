@@ -150,6 +150,10 @@ class CoreGeometryTools {
 
     return AlgGeom::Point(x, y);
   }
+  
+  static ld get_ratio_points(Point p1, Point p2, Point p) {
+    return 0;
+  }
 
   static pair<Point, Point> inter_lc(Line l, Circle c) {
     cout << "l = " << l.a << " " << l.b << " " << l.c << endl;
