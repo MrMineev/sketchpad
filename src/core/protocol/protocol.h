@@ -22,6 +22,9 @@ class Protocol {
   void new_line(int pos, int x, int y, bool state);
   void new_circle(int pos, int x, int y);
 
+  std::vector<std::pair<std::string, int>> get_order();
+  json get_info(std::string &s, int index);
+
   std::string get_string_format();
   void save_data();
 

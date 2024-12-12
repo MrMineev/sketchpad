@@ -13,196 +13,30 @@ const long double EPS = 10;
 
 const int CIRCLE_ASCII_LOC = 48;
 
-/*
-void GeometryVisual::new_point(int pos, ld x, ld y) {
-  char c = 'A' + pos;
-  string res = "\nINIT ";
-  res += c;
-  res += ' ';
-  res += to_string(x);
-  res += ' ';
-  res += to_string(y);
-  res += ';';
-  return res;
-}
-*/
-
-/*
-string GeometryVisual::new_point_on_line(int pos, int x, ld r) {
-  string res = "";
-  char c1 = 'A' + pos;
-  char c2 = 'a' + x;
-  res += c1;
-  res += " = PLINE ";
-  res += c2;
-  res += ' ';
-  res += to_string(r);
-  return res;
-}
-*/
-
-string GeometryVisual::new_inter_lc(int pos1, int pos2, int x, int y) {
-  string res = "";
-  char c1 = 'A' + pos1;
-  char c2 = 'A' + pos2;
-  char cx = 'a' + x;
-  char cy = CIRCLE_ASCII_LOC + y;
-  res += "\n[";
-  res += c1;
-  res += ",";
-  res += c2;
-  res += "] = INTER_LC ";
-  res += cx;
-  res += " ";
-  res += cy;
-  res += ';';
-  return res;
-}
-
-string GeometryVisual::new_incenter(int pos, int x, int y, int z) {
-  cout << pos << " " << x << " " << y << " " << z << endl;
-  string res = "";
-  char c = 'A' + pos;
-  char cx = 'A' + x;
-  char cy = 'A' + y;
-  char cz = 'A' + z;
-  res += "\n";
-  res += c;
-  res += " = INCENTER ";
-  res += cx;
-  res += " ";
-  res += cy;
-  res += " ";
-  res += cz;
-  res += ';';
-  return res;
-}
-
-string GeometryVisual::new_excenter(int pos, int x, int y, int z) {
-  cout << pos << " " << x << " " << y << " " << z << endl;
-  string res = "";
-  char c = 'A' + pos;
-  char cx = 'A' + x;
-  char cy = 'A' + y;
-  char cz = 'A' + z;
-  res += "\n";
-  res += c;
-  res += " = EXCENTER ";
-  res += cx;
-  res += " ";
-  res += cy;
-  res += " ";
-  res += cz;
-  res += ';';
-  return res;
-}
-
-string GeometryVisual::new_perp_normal(int pos, int x, int y) {
-  cout << pos << " " << x << " " << y << endl;
-  string res = "";
-  char c = 'a' + pos;
-  char cx = 'A' + x;
-  char cy = 'a' + y;
-  res += "\n";
-  res += c;
-  res += " = PERP_NORMAL ";
-  res += cx;
-  res += " ";
-  res += cy;
-  res += ';';
-  return res;
-}
-
-string GeometryVisual::new_line_intersection(int pos, int x, int y) {
-  cout << pos << " " << x << " " << y << endl;
-  string res = "";
-  char c = 'A' + pos;
-  char cx = 'a' + x;
-  char cy = 'a' + y;
-  res += "\n";
-  res += c;
-  res += " = INTER_LL ";
-  res += cx;
-  res += " ";
-  res += cy;
-  res += ';';
-  return res;
-}
-
-string GeometryVisual::new_circumcircle(int pos, int x, int y, int z) {
-  cout << pos << " " << x << " " << y << endl;
-  string res = "";
-  char c = (char)(CIRCLE_ASCII_LOC + pos);
-  char cx = 'A' + x;
-  char cy = 'A' + y;
-  char cz = 'A' + z;
-  res += "\n";
-  res += c;
-  res += " = CIRCUMCIRCLE ";
-  res += cx;
-  res += " ";
-  res += cy;
-  res += " ";
-  res += cz;
-  res += ';';
-  return res;
-}
-
-string GeometryVisual::new_midpoint(int pos, int x, int y) {
-  cout << pos << " " << x << " " << y << endl;
-  string res = "";
-  char c = 'A' + pos;
-  char cx = 'A' + x;
-  char cy = 'A' + y;
-  res += "\n";
-  res += c;
-  res += " = MIDPOINT ";
-  res += cx;
-  res += " ";
-  res += cy;
-  res += ';';
-  return res;
-}
-
-string GeometryVisual::new_line(int pos, int x, int y, bool state) {
-  cout << pos << " " << x << " " << y << endl;
-  string res = "";
-  char c = 'a' + pos;
-  char cx = 'A' + x;
-  char cy = 'A' + y;
-  res += "\n";
-  res += c;
-  res += " = MAKE_LINE ";
-  res += cx;
-  res += " ";
-  res += cy;
-  res += " ";
-  res += (char)('0' + state);
-  res += ';';
-  return res;
-}
-
-string GeometryVisual::new_circle(int pos, int pos1, int pos2) {
-  string res = "";
-  char c = (char)(CIRCLE_ASCII_LOC + pos);
-  char cx = 'A' + pos1;
-  char cy = 'A' + pos2;
-  res += "\n";
-  res += c;
-  res += " = MAKE_CIRCLE ";
-  res += cx;
-  res += " ";
-  res += cy;
-  res += ';';
-  return res;
-}
-
 void GeometryVisual::rebuild() {
   this->lines.clear();
   this->circles.clear();
   this->points.clear();
 
-  vector<string> tokens; // = tokenize(this->protocol);
+  for (auto &obj : protocol.get_order()) {
+    string return_type = obj.first;
+    int index = obj.second;
+    std::cout << "THIS IS " << return_type << " " << index << std::endl;
+
+    json &information_command = protocol.get_info(return_type, index);
+
+    std::string command_type = information_command["func"];
+
+    switch (command_type) {
+      case "newPoint":
+        break;
+      default:
+        std::cerr << "[ERROR]: unknown command type => " << comand_type << std::endl;
+        break;
+    }
+  }
+
+  vector<string> tokens;
 
   int ptr = 0;
   while (ptr < tokens.size()) {

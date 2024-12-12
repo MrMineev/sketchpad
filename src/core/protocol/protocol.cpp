@@ -112,6 +112,14 @@ void Protocol::save_data() {
   file << s << std::endl;
 }
 
+std::vector<std::pair<std::string, int>> Protocol::get_order() {
+  return this->protocol["order"];
+}
+
+json Protocol::get_info(std::string &t, int index) {
+  return this->protocol[t][index];
+}
+
 
 
 
