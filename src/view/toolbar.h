@@ -36,7 +36,8 @@ struct ToolView {
     "Inversion (Partial)",
     "Incenter",
     "Excenter",
-    "Intersect Line & Circle"
+    "Intersect Line & Circle",
+    "Save"
   };
 
   void draw_tools(sf::RenderWindow &window) {

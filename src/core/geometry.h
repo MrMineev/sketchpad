@@ -4,6 +4,8 @@
 #include "primitives/line.h"
 #include "primitives/circle.h"
 
+#include "protocol/protocol.h"
+
 #include "../../gui_tools/src/Gui/Gui.hpp"
 #include "../../json_manager/json/single_include/nlohmann/json.hpp"
 
@@ -27,7 +29,7 @@ class GeometryVisual {
   bool isDragging = false;
   int follower = -1;
 
-  json protocol;
+  Protocol protocol;
 
   std::string new_point(int pos);
   std::string new_circumcircle(int pos, int x, int y, int z);
@@ -47,6 +49,5 @@ class GeometryVisual {
 
   GeometryVisual(int _MENU_BORDER) {
     X_MENU_BORDER = _MENU_BORDER;
-    protocol = {};
   }
 };

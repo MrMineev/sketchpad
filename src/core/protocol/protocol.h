@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../../../json_manager/json/single_include/nlohmann/json.hpp"
+#include <fstream>
+#include <iostream>
 
 using json = nlohmann::json; 
 
@@ -16,13 +18,15 @@ class Protocol {
   void new_inter_lc(int pos1, int pos2, int x, int y);
   void new_midpoint(int pos, int x, int y);
   void new_perp_normal(int pos, int x, int y);
-  void new_line_intersection(int pos, int x, int y);
+  void new_inter_ll(int pos, int x, int y);
   void new_line(int pos, int x, int y, bool state);
   void new_circle(int pos, int x, int y);
 
   std::string get_string_format();
+  void save_data();
 
   Protocol() {
+    std::cout << "Initialized!" << std::endl;
     protocol = {
       {"Point", {}},
       {"Line", {}},

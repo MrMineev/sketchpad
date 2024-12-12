@@ -432,6 +432,7 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       if (index_search == -1) {
         this->points.push_back(p);
         // protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
+        protocol.new_point(this->points.size() - 1, p.x_pos, p.y_pos);
       }
     }
     
@@ -554,7 +555,9 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       this->live_stack[1].y_pos
     ));
 
-    protocol += GeometryVisual::new_line(this->lines.size() - 1, this->live_stack[0].index, this->live_stack[1].index, true);
+    protocol.new_line(this->lines.size() - 1, this->live_stack[0].index, this->live_stack[1].index, true);
+
+    // protocol += GeometryVisual::new_line(this->lines.size() - 1, this->live_stack[0].index, this->live_stack[1].index, true);
 
     this->live_stack.clear();
     this->live_stack_lines.clear();
@@ -576,8 +579,10 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
         )
       )
     ));
+
+    protocol.new_circle(this->circles.size() - 1, this->live_stack[0].index, this->live_stack[1].index);
     
-    protocol += GeometryVisual::new_circle(this->circles.size() - 1, this->live_stack[0].index, this->live_stack[1].index);
+    // protocol += GeometryVisual::new_circle(this->circles.size() - 1, this->live_stack[0].index, this->live_stack[1].index);
 
     this->live_stack.clear();
     this->live_stack_lines.clear();
@@ -590,7 +595,9 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       (this->live_stack[0].y_pos + this->live_stack[1].y_pos) / 2
     ));
 
-    protocol += GeometryVisual::new_midpoint(this->points.size() - 1, this->live_stack[0].index, this->live_stack[1].index);
+    protocol.new_midpoint(this->points.size() - 1, this->live_stack[0].index, this->live_stack[1].index);
+
+    // protocol += GeometryVisual::new_midpoint(this->points.size() - 1, this->live_stack[0].index, this->live_stack[1].index);
 
     this->live_stack.clear();
     this->live_stack_lines.clear();
@@ -617,7 +624,9 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       )
     ));
 
-    protocol += GeometryVisual::new_circumcircle(this->circles.size() - 1, this->live_stack[0].index, this->live_stack[1].index, this->live_stack[2].index);
+    protocol.new_circumcircle(this->circles.size() - 1, this->live_stack[0].index, this->live_stack[1].index, this->live_stack[2].index);
+
+    // protocol += GeometryVisual::new_circumcircle(this->circles.size() - 1, this->live_stack[0].index, this->live_stack[1].index, this->live_stack[2].index);
 
     this->live_stack.clear();
     this->live_stack_lines.clear();
@@ -633,7 +642,9 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       false
     ));
 
-    protocol += GeometryVisual::new_line(this->lines.size() - 1, this->live_stack[0].index, this->live_stack[1].index, false);
+    protocol.new_line(this->lines.size() - 1, this->live_stack[0].index, this->live_stack[1].index, false);
+
+    // protocol += GeometryVisual::new_line(this->lines.size() - 1, this->live_stack[0].index, this->live_stack[1].index, false);
 
     this->live_stack.clear();
     this->live_stack_lines.clear();
@@ -653,7 +664,9 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     );
     this->points.push_back(GPoint(p.x, p.y));
 
-    protocol += GeometryVisual::new_line_intersection(this->points.size() - 1, this->live_stack_lines[0].index, this->live_stack_lines[1].index);
+    protocol.new_inter_ll(this->points.size() - 1, this->live_stack_lines[0].index, this->live_stack_lines[1].index);
+
+    // protocol += GeometryVisual::new_line_intersection(this->points.size() - 1, this->live_stack_lines[0].index, this->live_stack_lines[1].index);
 
     this->live_stack.clear();
     this->live_stack_lines.clear();
@@ -674,7 +687,9 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       false
     ));
 
-    protocol += GeometryVisual::new_perp_normal(this->lines.size() - 1, this->live_stack[0].index, this->live_stack_lines[0].index);
+    protocol.new_perp_normal(this->lines.size() - 1, this->live_stack[0].index, this->live_stack_lines[0].index);
+
+    // protocol += GeometryVisual::new_perp_normal(this->lines.size() - 1, this->live_stack[0].index, this->live_stack_lines[0].index);
 
     this->live_stack.clear();
     this->live_stack_lines.clear();
@@ -728,7 +743,9 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       GPoint(p.x, p.y)
     );
 
-    protocol += GeometryVisual::new_incenter(this->points.size() - 1, this->live_stack[0].index, this->live_stack[1].index, this->live_stack[2].index);
+    protocol.new_incenter(this->points.size() - 1, this->live_stack[0].index, this->live_stack[1].index, this->live_stack[2].index);
+
+    // protocol += GeometryVisual::new_incenter(this->points.size() - 1, this->live_stack[0].index, this->live_stack[1].index, this->live_stack[2].index);
 
     this->live_stack.clear();
     this->live_stack_lines.clear();
@@ -745,7 +762,9 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       GPoint(p.x, p.y)
     );
 
-    protocol += GeometryVisual::new_excenter(this->points.size() - 1, this->live_stack[0].index, this->live_stack[1].index, this->live_stack[2].index);
+    protocol.new_excenter(this->points.size() - 1, this->live_stack[0].index, this->live_stack[1].index, this->live_stack[2].index);
+
+    // protocol += GeometryVisual::new_excenter(this->points.size() - 1, this->live_stack[0].index, this->live_stack[1].index, this->live_stack[2].index);
 
     this->live_stack.clear();
     this->live_stack_lines.clear();
@@ -772,13 +791,19 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       GPoint(p.second.x, p.second.y)
     );
 
-    protocol += GeometryVisual::new_inter_lc(this->points.size() - 1, this->points.size() - 2, this->live_stack_lines[0].index, this->live_stack_circles[1].index);
+    protocol.new_inter_lc(this->points.size() - 1, this->points.size() - 2, this->live_stack_lines[0].index, this->live_stack_circles[1].index);
+
+    // protocol += GeometryVisual::new_inter_lc(this->points.size() - 1, this->points.size() - 2, this->live_stack_lines[0].index, this->live_stack_circles[1].index);
 
     this->live_stack.clear();
     this->live_stack_lines.clear();
     this->live_stack_circles.clear();
   }
 
+  if (this->current_tool == 13) {
+    std::cout << "data = " << protocol.get_string_format() << std::endl;
+    this->protocol.save_data();
+  }
 }
 
 void GeometryVisual::draw(sf::RenderWindow& window) {
