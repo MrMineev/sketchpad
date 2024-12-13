@@ -167,9 +167,11 @@ private:
     size_t selectedIndex = 0;
 };
 
+/*
 int main() {
     FileExplorer explorer;
     explorer.run();
     return 0;
 }
+*/
 

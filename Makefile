@@ -2,7 +2,7 @@
 CXX = g++
 CXXFLAGS = -std=c++17
 INCLUDES = -I /opt/homebrew/Cellar/sfml/2.6.1/include/
-LIBS = -L /opt/homebrew/Cellar/sfml/2.6.1/lib/ -lsfml-graphics -lsfml-window -lsfml-system -framework OpenGL
+LIBS = -L /opt/homebrew/Cellar/sfml/2.6.1/lib/ -lsfml-graphics -lsfml-window -lsfml-system -lsfml-network -framework OpenGL
 
 # Output binary name
 TARGET = main
