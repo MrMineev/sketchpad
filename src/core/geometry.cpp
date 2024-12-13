@@ -21,34 +21,20 @@ void GeometryVisual::rebuild() {
   for (auto &obj : protocol.get_order()) {
     string return_type = obj.first;
     int index = obj.second;
-    std::cout << "THIS IS " << return_type << " " << index << std::endl;
+    // std::cout << "THIS IS " << return_type << " " << index << std::endl;
 
-    json &information_command = protocol.get_info(return_type, index);
+    json information_command = protocol.get_info(return_type, index);
 
-    std::string command_type = information_command["func"];
+    std::string command_type = information_command["func"].template get<std::string>();
 
-    switch (command_type) {
-      case "newPoint":
-        break;
-      default:
-        std::cerr << "[ERROR]: unknown command type => " << comand_type << std::endl;
-        break;
-    }
-  }
-
-  vector<string> tokens;
-
-  int ptr = 0;
-  while (ptr < tokens.size()) {
-    if (tokens[ptr] == "INIT") {
-      ld px = std::stold(tokens[ptr + 1]);
-      ld py = std::stold(tokens[ptr + 2]);
+    if (command_type == "newPoint") {
+      ld px = information_command["location"][0];
+      ld py = information_command["location"][1];
       this->points.push_back(GPoint(px, py));
-      ptr += 2;
-    } else if (tokens[ptr] == "MAKE_LINE") {
-      int p1 = (int)tokens[ptr + 1][0] - (int)'A';
-      int p2 = (int)tokens[ptr + 2][0] - (int)'A';
-      int p3 = (int)tokens[ptr + 3][0] - (int)'0';
+    } else if (command_type == "newLine") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
+      bool p3 = information_command["version"];
       this->lines.push_back(
         GLine(
           this->points[p1].x_pos, this->points[p1].y_pos,
@@ -56,10 +42,9 @@ void GeometryVisual::rebuild() {
           p3
         )
       );
-      ptr += 4;
-    } else if (tokens[ptr] == "MAKE_CIRCLE") {
-      int p1 = (int)tokens[ptr + 1][0] - (int)'A';
-      int p2 = (int)tokens[ptr + 2][0] - (int)'A';
+    } else if (command_type == "newCircle") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
       this->circles.push_back(
         GCircle(
           this->points[p1].x_pos, this->points[p1].y_pos,
@@ -69,25 +54,18 @@ void GeometryVisual::rebuild() {
           )
         )
       );
-      ptr += 3;
-    } else if (tokens[ptr] == "MIDPOINT") {
-      int p = (int)tokens[ptr - 1][0] - (int)'A';
-      int p1 = (int)tokens[ptr + 1][0] - (int)'A';
-      int p2 = (int)tokens[ptr + 2][0] - (int)'A';
+    } else if (command_type == "midpoint") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
       AlgGeom::Point new_loc = AlgGeom::CoreGeometryTools::midpoint(
         AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
         AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos)
       );
-      // this->points[p] = GPoint(new_loc.x, new_loc.y);
       this->points.push_back(GPoint(new_loc.x, new_loc.y));
-      ptr += 3;
-    } else if (tokens[ptr] == "CIRCUMCIRCLE") {
-      int p1 = (int)tokens[ptr + 1][0] - (int)'A';
-      int p2 = (int)tokens[ptr + 2][0] - (int)'A';
-      int p3 = (int)tokens[ptr + 3][0] - (int)'A';
-
-      // cout << "DRAWING = " << p1 << " " << p2 << " " << p3 << endl;
-
+    } else if (command_type == "circumcircle") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
+      int p3 = information_command["args"][2];
       AlgGeom::Line l1 = AlgGeom::CoreGeometryTools::perp_bisector(
         AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
         AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos)
@@ -102,12 +80,9 @@ void GeometryVisual::rebuild() {
           p, AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos)
         )
       ));
-
-      ptr += 4;
-    } else if (tokens[ptr] == "INTER_LL") {
-      int p = (int)tokens[ptr - 1][0] - (int)'A';
-      int p1 = (int)tokens[ptr + 1][0] - (int)'a';
-      int p2 = (int)tokens[ptr + 2][0] - (int)'a';
+    } else if (command_type == "interLL") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
       AlgGeom::Line l1 = AlgGeom::Line(
         AlgGeom::Point(this->lines[p1].x1, this->lines[p1].y1),
         AlgGeom::Point(this->lines[p1].x2, this->lines[p1].y2)
@@ -117,16 +92,10 @@ void GeometryVisual::rebuild() {
         AlgGeom::Point(this->lines[p2].x2, this->lines[p2].y2)
       );
       AlgGeom::Point new_loc = AlgGeom::CoreGeometryTools::inter_lines(l1, l2);
-      // this->points[p] = GPoint(new_loc.x, new_loc.y);
       this->points.push_back(GPoint(new_loc.x, new_loc.y));
-
-      ptr += 3;
-    } else if (tokens[ptr] == "INTER_LC") {
-      int init_1 = (int)tokens[ptr - 2][0] - (int)'A';
-      int init_2 = (int)tokens[ptr - 1][0] - (int)'A';
-      int p1 = (int)tokens[ptr + 1][0] - (int)'a';
-      int p2 = (int)tokens[ptr + 2][0] - CIRCLE_ASCII_LOC;
-
+    } else if (command_type == "interLC") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
       AlgGeom::Line l1 = AlgGeom::Line(
         AlgGeom::Point(this->lines[p1].x1, this->lines[p1].y1),
         AlgGeom::Point(this->lines[p1].x2, this->lines[p1].y2)
@@ -136,20 +105,15 @@ void GeometryVisual::rebuild() {
         this->circles[p2].radius
       );
       pair<AlgGeom::Point, AlgGeom::Point> new_loc = AlgGeom::CoreGeometryTools::inter_lc(l1, c2);
-
-      // this->points[init_1] = GPoint(new_loc.first.x, new_loc.first.y);
       this->points.push_back(
         GPoint(new_loc.first.x, new_loc.first.y)
       );
-      // this->points[init_2] = GPoint(new_loc.second.x, new_loc.second.y);
       this->points.push_back(
         GPoint(new_loc.second.x, new_loc.second.y)
       );
-
-      ptr += 3;
-    } else if (tokens[ptr] == "PERP_NORMAL") {
-      int p1 = (int)tokens[ptr + 1][0] - (int)'A';
-      int p2 = (int)tokens[ptr + 2][0] - (int)'a';
+    } else if (command_type == "perpNormal") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
       AlgGeom::Line l = AlgGeom::CoreGeometryTools::perp_normal(
         AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
         AlgGeom::Line(
@@ -162,14 +126,10 @@ void GeometryVisual::rebuild() {
         gen.first.first, gen.first.second, gen.second.first, gen.second.second,
         false
       ));
-
-      ptr += 3;
-    } else if (tokens[ptr] == "INCENTER") {
-      int p = (int)tokens[ptr - 1][0] - (int)'A';
-      int p1 = (int)tokens[ptr + 1][0] - (int)'A';
-      int p2 = (int)tokens[ptr + 2][0] - (int)'A';
-      int p3 = (int)tokens[ptr + 3][0] - (int)'A';
-
+    } else if (command_type == "new_incenter") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
+      int p3 = information_command["args"][2];
       AlgGeom::Point new_loc = AlgGeom::CoreGeometryTools::incenter(
         AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
         AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos),
@@ -177,13 +137,10 @@ void GeometryVisual::rebuild() {
       );
       // this->points[p] = GPoint(new_loc.x, new_loc.y);
       this->points.push_back(GPoint(new_loc.x, new_loc.y));
-      ptr += 4;
-    } else if (tokens[ptr] == "EXCENTER") {
-      int p = (int)tokens[ptr - 1][0] - (int)'A';
-      int p1 = (int)tokens[ptr + 1][0] - (int)'A';
-      int p2 = (int)tokens[ptr + 2][0] - (int)'A';
-      int p3 = (int)tokens[ptr + 3][0] - (int)'A';
-
+    } else if (command_type == "EXCENTER") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
+      int p3 = information_command["args"][2];
       AlgGeom::Point new_loc = AlgGeom::CoreGeometryTools::excenter(
         AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
         AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos),
@@ -191,9 +148,8 @@ void GeometryVisual::rebuild() {
       );
       // this->points[p] = GPoint(new_loc.x, new_loc.y);
       this->points.push_back(GPoint(new_loc.x, new_loc.y));
-      ptr += 4;
     } else {
-      ptr++;
+      std::cerr << "[ERROR]: unknown command type => " << command_type << std::endl;
     }
   }
 }
@@ -377,7 +333,10 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
 
   if (isDragging) {
     sf::Vector2i mousePos = sf::Mouse::getPosition(window);
-    this->points[follower] = GPoint(mousePos.x, mousePos.y);
+    this->protocol.edit_position(follower, mousePos.x, mousePos.y);
+    // this->points[follower] = GPoint(mousePos.x, mousePos.y);
+    // std::cout << "data = " << protocol.get_string_format() << std::endl;
+
     this->rebuild();
   }
   
@@ -635,7 +594,7 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
   }
 
   if (this->current_tool == 13) {
-    std::cout << "data = " << protocol.get_string_format() << std::endl;
+    // std::cout << "data = " << protocol.get_string_format() << std::endl;
     this->protocol.save_data();
   }
 }

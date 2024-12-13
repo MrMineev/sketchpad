@@ -120,6 +120,11 @@ json Protocol::get_info(std::string &t, int index) {
   return this->protocol[t][index];
 }
 
+void Protocol::edit_position(int follower, ld px, ld py) {
+  this->protocol["Point"][follower]["location"][0] = px;
+  this->protocol["Point"][follower]["location"][1] = py;
+}
+
 
 
 

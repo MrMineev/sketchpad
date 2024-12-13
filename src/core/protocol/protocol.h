@@ -4,7 +4,9 @@
 #include <fstream>
 #include <iostream>
 
-using json = nlohmann::json; 
+using json = nlohmann::json;
+
+typedef long double ld;
 
 class Protocol {
  private:
@@ -21,6 +23,7 @@ class Protocol {
   void new_inter_ll(int pos, int x, int y);
   void new_line(int pos, int x, int y, bool state);
   void new_circle(int pos, int x, int y);
+  void edit_position(int pos, ld x, ld y);
 
   std::vector<std::pair<std::string, int>> get_order();
   json get_info(std::string &s, int index);
