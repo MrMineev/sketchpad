@@ -232,6 +232,7 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
         p.index = this->points.size();
         this->points.push_back(p);
         // protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
+        protocol.new_point(this->points.size() - 1, p.x_pos, p.y_pos);
       }
       this->live_stack.push_back(p);
     }
@@ -241,6 +242,7 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
         p.index = this->points.size();
         this->points.push_back(p);
         // protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
+        protocol.new_point(this->points.size() - 1, p.x_pos, p.y_pos);
       }
       this->live_stack.push_back(p);
     }
@@ -250,6 +252,7 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
         p.index = this->points.size();
         this->points.push_back(p);
         // protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
+        protocol.new_point(this->points.size() - 1, p.x_pos, p.y_pos);
       }
       this->live_stack.push_back(p);
     }
@@ -259,6 +262,7 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
         p.index = this->points.size();
         this->points.push_back(p);
         // protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
+        protocol.new_point(this->points.size() - 1, p.x_pos, p.y_pos);
       }
       this->live_stack.push_back(p);
     }
@@ -268,6 +272,7 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
         p.index = this->points.size();
         this->points.push_back(p);
         // protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
+        protocol.new_point(this->points.size() - 1, p.x_pos, p.y_pos);
       }
       this->live_stack.push_back(p);
     }
