@@ -9,6 +9,7 @@
 // #include ".h"
 #include "../../gui_tools/src/Gui/Gui.hpp"
 #include "../../src/core/geometry.h"
+#include "../../filebrowser/browser.h"
 
 using namespace std;
 
@@ -37,7 +38,8 @@ struct ToolView {
     "Incenter",
     "Excenter",
     "Intersect Line & Circle",
-    "Save"
+    "Save",
+    "Open"
   };
 
   void draw_tools(sf::RenderWindow &window) {
@@ -48,9 +50,26 @@ struct ToolView {
   void setup() {
     for (ll i = 0; i < (ll)tools_names.size(); i++) {
       gui::Button* button = new gui::Button(tools_names[i]);
-      button->setCallback([this, i] {
-        geomv->current_tool = i;
-      });
+      if (i < (ll)tools_names.size() - 2) {
+        button->setCallback([this, i] {
+          geomv->current_tool = i;
+        });
+      } else if (i == (ll)tools_names.size() - 2) {
+        // Save
+        button->setCallback([this, i] {
+          FileExplorer explorer;
+          string conf_sel_pathway_end = explorer.run();
+          geomv->save_configuration(conf_sel_pathway_end);
+        });
+      } else if (i == (ll)tools_names.size() - 1) {
+        // Open
+        button->setCallback([this, i] {
+          FileExplorer explorer;
+          string conf_sel_pathway_end = explorer.run();
+          geomv->load_configuration(conf_sel_pathway_end);
+          std::cout << "CONFIGURATION LOADED!" << std::endl;
+        });
+      }
       menu->add(button);
     }
   }

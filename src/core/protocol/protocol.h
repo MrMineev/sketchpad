@@ -30,6 +30,7 @@ class Protocol {
 
   std::string get_string_format();
   void save_data();
+  void load_data(std::string &pathway);
 
   Protocol() {
     std::cout << "Initialized!" << std::endl;

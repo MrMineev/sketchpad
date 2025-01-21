@@ -47,7 +47,23 @@ class GeometryVisual {
   void draw(sf::RenderWindow& window);
   void rebuild();
 
+  void save_configuration(std::string &filepath);
+  void load_configuration(std::string &filepath);
+
   GeometryVisual(int _MENU_BORDER) {
     X_MENU_BORDER = _MENU_BORDER;
   }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+

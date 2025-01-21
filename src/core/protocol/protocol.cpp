@@ -120,6 +120,12 @@ json Protocol::get_info(std::string &t, int index) {
   return this->protocol[t][index];
 }
 
+void Protocol::load_data(std::string &pathway) {
+  std::ifstream f(pathway);
+  this->protocol = json::parse(f);
+  std::cout << "PROTOCOL LOADED (protocol)!" << std::endl;
+}
+
 void Protocol::edit_position(int follower, ld px, ld py) {
   this->protocol["Point"][follower]["location"][0] = px;
   this->protocol["Point"][follower]["location"][1] = py;

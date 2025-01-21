@@ -13,6 +13,17 @@ const long double EPS = 10;
 
 const int CIRCLE_ASCII_LOC = 48;
 
+void GeometryVisual::save_configuration(std::string &filepath) {
+  std::ofstream file(filepath);
+  std::string s = protocol.get_string_format();
+  file << s << std::endl;
+}
+
+void GeometryVisual::load_configuration(std::string &filepath) {
+  protocol.load_data(filepath);
+  this->rebuild();
+}
+
 void GeometryVisual::rebuild() {
   this->lines.clear();
   this->circles.clear();
