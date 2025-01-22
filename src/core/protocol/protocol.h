@@ -10,10 +10,14 @@ typedef long double ld;
 
 class Protocol {
  private:
-  json protocol;
 
  public:
+  json protocol;
+  
+  bool is_point_def_by_func(int pos, std::string func);
+  json get_point_info(int pos);
   void new_point(int pos, long double x, long double y);
+  void new_point_on_line(int pos, int line_index, long double ratio);
   void new_circumcircle(int pos, int x, int y, int z);
   void new_incenter(int pos, int x, int y, int z);
   void new_excenter(int pos, int x, int y, int z);

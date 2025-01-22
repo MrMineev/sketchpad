@@ -151,10 +151,26 @@ class CoreGeometryTools {
     return AlgGeom::Point(x, y);
   }
   
-  static ld get_ratio_points(Point p1, Point p2, Point p) {
-    return 0;
+  // Get the ratio parameter for point p on the line segment (p1, p2)
+  static long double get_point_on_line_ratio(Point p1, Point p2, Point p) {
+    // Check if the line is horizontal or vertical
+    if (p2.x != p1.x) {
+      // Line is not vertical, use x-coordinates
+      return (p.x - p1.x) / (p2.x - p1.x);
+    } else {
+      // Line is vertical, use y-coordinates
+      return (p.y - p1.y) / (p2.y - p1.y);
+    }
   }
 
+  // Get a point on the line based on the ratio parameter
+  static Point get_point_on_line_via_ratio(Point p1, Point p2, long double ratio) {
+    long double x = p1.x + ratio * (p2.x - p1.x);
+    long double y = p1.y + ratio * (p2.y - p1.y);
+    return Point(x, y);
+  }
+
+  // intersect line and circle
   static pair<Point, Point> inter_lc(Line l, Circle c) {
     cout << "l = " << l.a << " " << l.b << " " << l.c << endl;
     cout << "c = " << c.p.x << " " << c.p.y << " "<< c.radius << endl;

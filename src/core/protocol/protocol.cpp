@@ -13,6 +13,15 @@ void Protocol::new_point(int pos, ld px, ld py) {
   this->protocol["order"].push_back({"Point", pos});
 }
 
+void Protocol::new_point_on_line(int pos, int line_index, long double ratio) {
+  this->protocol["Point"][pos] = {
+    {"func", "newPointOnLine"},
+    {"type", "Point"},
+    {"args", {line_index, ratio}}
+  };
+  this->protocol["order"].push_back({"Point", pos});
+}
+
 void Protocol::new_circumcircle(int pos, int x, int y, int z) {
   this->protocol["Circle"][pos] = {
     {"func", "circumcircle"},
@@ -124,6 +133,14 @@ void Protocol::load_data(std::string &pathway) {
   std::ifstream f(pathway);
   this->protocol = json::parse(f);
   std::cout << "PROTOCOL LOADED (protocol)!" << std::endl;
+}
+
+bool Protocol::is_point_def_by_func(int pos, std::string func) {
+  return (this->protocol["Point"][pos]["func"] == func);
+}
+
+json Protocol::get_point_info(int pos) {
+  return this->protocol["Point"][pos];
 }
 
 void Protocol::edit_position(int follower, ld px, ld py) {

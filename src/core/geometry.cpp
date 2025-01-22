@@ -42,6 +42,21 @@ void GeometryVisual::rebuild() {
       ld px = information_command["location"][0];
       ld py = information_command["location"][1];
       this->points.push_back(GPoint(px, py));
+    } else if (command_type == "newPointOnLine") {
+      ld line_index = information_command["args"][0];
+      ld point_ratio = information_command["args"][1];
+      AlgGeom::Point p = AlgGeom::CoreGeometryTools::get_point_on_line_via_ratio(
+        AlgGeom::Point(
+          this->lines[line_index].x1,
+          this->lines[line_index].y1
+        ),
+        AlgGeom::Point(
+          this->lines[line_index].x2,
+          this->lines[line_index].y2
+        ),
+        point_ratio
+      );
+      this->points.push_back(GPoint(p.x, p.y));
     } else if (command_type == "newLine") {
       int p1 = information_command["args"][0];
       int p2 = information_command["args"][1];
@@ -175,7 +190,7 @@ pair<pair<int, pair<int, int>>, GPoint> GeometryVisual::point_searcher(GPoint p)
     }
   }
   for (int i = 0; i < this->lines.size(); i++) {
-    // TODO MAKE DIFFERENTIATE BETWEEN LINE AND SEGMENT
+    // TODO DIFFERENTIATE BETWEEN LINE AND SEGMENT
     if (AlgGeom::CoreGeometryTools::dist_point_to_line(
       AlgGeom::Point(p.x_pos, p.y_pos),
       AlgGeom::Line(
@@ -232,8 +247,22 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 1) {
       if (index_search == -1) {
         this->points.push_back(p);
-        // protocol += new_point(this->points.size() - 1, p.x_pos, p.y_pos);
-        protocol.new_point(this->points.size() - 1, p.x_pos, p.y_pos);
+        if (line_search != -1) {
+          ld ratio_value = AlgGeom::CoreGeometryTools::get_point_on_line_ratio(
+            AlgGeom::Point(
+              this->lines[line_search].x1,
+              this->lines[line_search].y1
+            ),
+            AlgGeom::Point(
+              this->lines[line_search].x2,
+              this->lines[line_search].y2
+            ),
+            AlgGeom::Point(p.x_pos, p.y_pos)
+          );
+          protocol.new_point_on_line(this->points.size() - 1, line_search, ratio_value);
+        } else {
+          protocol.new_point(this->points.size() - 1, p.x_pos, p.y_pos);
+        }
       }
     }
     
@@ -349,7 +378,31 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
 
   if (isDragging) {
     sf::Vector2i mousePos = sf::Mouse::getPosition(window);
-    this->protocol.edit_position(follower, mousePos.x, mousePos.y);
+
+    if (this->protocol.is_point_def_by_func(follower, "newPointOnLine")) {
+      int line_index = this->protocol.get_point_info(follower)["args"][0];
+      AlgGeom::Point new_loc = AlgGeom::CoreGeometryTools::project_point_to_line(
+        AlgGeom::Point(mousePos.x, mousePos.y),
+        AlgGeom::Line(
+          AlgGeom::Point(this->lines[line_index].x1, this->lines[line_index].y1),
+          AlgGeom::Point(this->lines[line_index].x2, this->lines[line_index].y2)
+        )
+      );
+      ld ratio_value = AlgGeom::CoreGeometryTools::get_point_on_line_ratio(
+        AlgGeom::Point(
+          this->lines[line_index].x1,
+          this->lines[line_index].y1
+        ),
+        AlgGeom::Point(
+          this->lines[line_index].x2,
+          this->lines[line_index].y2
+        ),
+        new_loc
+      );
+      this->protocol.protocol["Point"][follower]["args"][1] = ratio_value;
+    } else {
+      this->protocol.edit_position(follower, mousePos.x, mousePos.y);
+    }
     // this->points[follower] = GPoint(mousePos.x, mousePos.y);
     // std::cout << "data = " << protocol.get_string_format() << std::endl;
 
