@@ -33,7 +33,7 @@ void Protocol::new_circumcircle(int pos, int x, int y, int z) {
 
 void Protocol::new_incenter(int pos, int x, int y, int z) {
   this->protocol["Point"][pos] = {
-    {"func", "incenter"},
+    {"func", "new_incenter"},
     {"type", "Point"},
     {"args", {x, y, z}}
   };
@@ -42,6 +42,7 @@ void Protocol::new_incenter(int pos, int x, int y, int z) {
 
 void Protocol::new_excenter(int pos, int x, int y, int z) {
   this->protocol["Point"][pos] = {
+    {"func", "new_excenter"},
     {"type", "Point"},
     {"args", {x, y, z}}
   };

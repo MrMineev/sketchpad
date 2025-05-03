@@ -1,0 +1,1 @@
+{"Circle":null,"Line":null,"Point":[{"func":"newPoint","location":[819.0,140.0],"type":"Point"},{"func":"newPoint","location":[649.0,419.0],"type":"Point"},{"func":"newPoint","location":[843.0,448.0],"type":"Point"}],"order":[["Point",0],["Point",1],["Point",2]]}

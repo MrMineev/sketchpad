@@ -163,7 +163,7 @@ void GeometryVisual::rebuild() {
       );
       // this->points[p] = GPoint(new_loc.x, new_loc.y);
       this->points.push_back(GPoint(new_loc.x, new_loc.y));
-    } else if (command_type == "EXCENTER") {
+    } else if (command_type == "new_excenter") {
       int p1 = information_command["args"][0];
       int p2 = information_command["args"][1];
       int p3 = information_command["args"][2];

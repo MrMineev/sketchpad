@@ -39,7 +39,7 @@ struct ToolView {
     "Excenter",
     "Intersect Line & Circle",
     "Save",
-    "Open"
+    "Open",
   };
 
   void draw_tools(sf::RenderWindow &window) {
