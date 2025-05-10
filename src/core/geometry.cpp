@@ -3,6 +3,9 @@
 #include "../../gui_tools/src/Gui/Gui.hpp"
 #include "../parser/parse.h"
 
+#include "../geo_genie/searcher.h"
+#include "../geo_genie/property.h"
+
 #include <string>
 
 typedef long double ld;
@@ -60,7 +63,7 @@ void GeometryVisual::rebuild() {
     } else if (command_type == "newLine") {
       int p1 = information_command["args"][0];
       int p2 = information_command["args"][1];
-      bool p3 = information_command["version"];
+      int p3 = information_command["version"];
       this->lines.push_back(
         GLine(
           this->points[p1].x_pos, this->points[p1].y_pos,
@@ -149,8 +152,21 @@ void GeometryVisual::rebuild() {
       );
       pair<pair<ld, ld>, pair<ld, ld>> gen = l.gen_points();
       this->lines.push_back(GLine(
-        gen.first.first, gen.first.second, gen.second.first, gen.second.second,
-        false
+        gen.first.first, gen.first.second, gen.second.first, gen.second.second, 0
+      ));
+    } else if (command_type == "parallel") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
+      AlgGeom::Line l = AlgGeom::CoreGeometryTools::parallel_line(
+        AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
+        AlgGeom::Line(
+          AlgGeom::Point(this->lines[p2].x1, this->lines[p2].y1),
+          AlgGeom::Point(this->lines[p2].x2, this->lines[p2].y2)
+        )
+      );
+      pair<pair<ld, ld>, pair<ld, ld>> gen = l.gen_points();
+      this->lines.push_back(GLine(
+        gen.first.first, gen.first.second, gen.second.first, gen.second.second, 1
       ));
     } else if (command_type == "new_incenter") {
       int p1 = information_command["args"][0];
@@ -369,6 +385,26 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
         }
       }
     }
+
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 13) {
+      GeoProp::GeoProperties something = GeoGenie::search(&protocol);
+      rebuild();
+    }
+
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 14) {
+      if (this->live_stack_lines.size() == 1) {
+        p.index = index_search;
+        this->live_stack.push_back(p);
+      } else {
+        if (line_search != -1) {
+          this->lines[line_search].index = line_search;
+          this->live_stack_lines.push_back(this->lines[line_search]);
+        } else {
+          p.index = index_search;
+          this->live_stack.push_back(p);
+        }
+      }
+    }
   }
   if (event.type == sf::Event::MouseButtonReleased) {
     if (event.mouseButton.button == sf::Mouse::Left) {
@@ -414,10 +450,11 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       this->live_stack[0].x_pos,
       this->live_stack[0].y_pos,
       this->live_stack[1].x_pos,
-      this->live_stack[1].y_pos
+      this->live_stack[1].y_pos,
+      0
     ));
 
-    protocol.new_line(this->lines.size() - 1, this->live_stack[0].index, this->live_stack[1].index, true);
+    protocol.new_line(this->lines.size() - 1, this->live_stack[0].index, this->live_stack[1].index, 0);
 
     // protocol += GeometryVisual::new_line(this->lines.size() - 1, this->live_stack[0].index, this->live_stack[1].index, true);
 
@@ -501,10 +538,10 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       this->live_stack[0].y_pos,
       this->live_stack[1].x_pos,
       this->live_stack[1].y_pos,
-      false
+      1 
     ));
 
-    protocol.new_line(this->lines.size() - 1, this->live_stack[0].index, this->live_stack[1].index, false);
+    protocol.new_line(this->lines.size() - 1, this->live_stack[0].index, this->live_stack[1].index, 1);
 
     // protocol += GeometryVisual::new_line(this->lines.size() - 1, this->live_stack[0].index, this->live_stack[1].index, false);
 
@@ -546,7 +583,7 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     pair<pair<ld, ld>, pair<ld, ld>> gen = l.gen_points();
     this->lines.push_back(GLine(
       gen.first.first, gen.first.second, gen.second.first, gen.second.second,
-      false
+      1
     ));
 
     protocol.new_perp_normal(this->lines.size() - 1, this->live_stack[0].index, this->live_stack_lines[0].index);
@@ -662,7 +699,32 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     this->live_stack_circles.clear();
   }
 
-  if (this->current_tool == 13) {
+  if (this->current_tool == 14 && this->live_stack_lines.size() == 1 && this->live_stack.size() == 1) {
+    cout << "CREATING NEW" << endl;
+    AlgGeom::Line l = AlgGeom::CoreGeometryTools::parallel_line(
+      AlgGeom::Point(this->live_stack[0].x_pos, this->live_stack[0].y_pos),
+      AlgGeom::Line(
+        AlgGeom::Point(this->live_stack_lines[0].x1, this->live_stack_lines[0].y1),
+        AlgGeom::Point(this->live_stack_lines[0].x2, this->live_stack_lines[0].y2)
+      )
+    );
+    pair<pair<ld, ld>, pair<ld, ld>> gen = l.gen_points();
+    this->lines.push_back(GLine(
+      gen.first.first, gen.first.second, gen.second.first, gen.second.second,
+      1
+    ));
+
+    protocol.new_parallel(this->lines.size() - 1, this->live_stack[0].index, this->live_stack_lines[0].index);
+
+    // protocol += GeometryVisual::new_perp_normal(this->lines.size() - 1, this->live_stack[0].index, this->live_stack_lines[0].index);
+
+    this->live_stack.clear();
+    this->live_stack_lines.clear();
+    this->live_stack_circles.clear();
+  }
+
+
+  if (this->current_tool == 15) {
     // std::cout << "data = " << protocol.get_string_format() << std::endl;
     this->protocol.save_data();
   }

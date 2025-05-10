@@ -11,6 +11,8 @@ typedef long double ld;
 
 namespace AlgGeom {
 
+const ld EPS = 1e-8;
+
 struct Point {
   ld x, y;
 
@@ -51,6 +53,10 @@ struct Circle {
 
 class CoreGeometryTools {
  public:
+  static bool points_are_equal(Point p1, Point p2) {
+    return dist_points(p1, p2) < EPS;
+  }
+
   // midpoint
   static Point midpoint(Point p1, Point p2) {
     return Point((p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
@@ -61,6 +67,14 @@ class CoreGeometryTools {
     ld a = l.b;
     ld b = -l.a;
     ld c = - a * p.x - b * p.y;
+    return Line{a, b, c};
+  }
+
+  // equation for a line through P parallel to L
+  static Line parallel_line(Point p, Line l) {
+    ld a = l.a;
+    ld b = l.b;
+    ld c = -a * p.x - b * p.y;
     return Line{a, b, c};
   }
 
@@ -227,11 +241,63 @@ class CoreGeometryTools {
 
         // Translate points back
         return {Point(x + cx, y1 + cy), Point(x + cx, y2 + cy)};
-    }
-}
 
+
+    }
+  }
+
+  // are colinear
+  static bool are_colinear(Point p1, Point p2, Point p3) {
+    ld d1 = CoreGeometryTools::dist_points(p1, p2);
+    ld d2 = CoreGeometryTools::dist_points(p2, p3);
+    ld d3 = CoreGeometryTools::dist_points(p3, p1);
+
+    vector<ld> val; val.push_back(d1); val.push_back(d2); val.push_back(d3);
+    sort(val.begin(), val.end());
+
+    return (abs(val[0] + val[1] - val[2]) < EPS);
+  }
+
+  // are colinear
+  static bool are_cyclic(Point p1, Point p2, Point p3, Point p4) {
+    return CoreGeometryTools::points_are_equal(
+      CoreGeometryTools::inter_lines(
+        CoreGeometryTools::perp_bisector(p1, p2),
+        CoreGeometryTools::perp_bisector(p3, p4)
+      ),
+      CoreGeometryTools::inter_lines(
+        CoreGeometryTools::perp_bisector(p2, p3),
+        CoreGeometryTools::perp_bisector(p1, p4)
+      )
+    );
+  }
+
+  // are parallel
+  static bool are_parallel(Line l1, Line l2) {
+    return abs(l1.a * l2.b - l2.a * l1.b) < EPS;
+  }
+
+  // are perpendicular
+  static bool are_perpendicular(Line l1, Line l2) {
+    return abs(l1.a * l2.a + l1.b * l2.b) < EPS;
+  }
 };
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

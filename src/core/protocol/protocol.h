@@ -24,8 +24,9 @@ class Protocol {
   void new_inter_lc(int pos1, int pos2, int x, int y);
   void new_midpoint(int pos, int x, int y);
   void new_perp_normal(int pos, int x, int y);
+  void new_parallel(int pos, int x, int y);
   void new_inter_ll(int pos, int x, int y);
-  void new_line(int pos, int x, int y, bool state);
+  void new_line(int pos, int x, int y, int state); // state = 2 (dashed)
   void new_circle(int pos, int x, int y);
   void edit_position(int pos, ld x, ld y);
 

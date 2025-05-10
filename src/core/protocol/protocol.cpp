@@ -84,6 +84,15 @@ void Protocol::new_perp_normal(int pos, int x, int y) {
   this->protocol["order"].push_back({"Line", pos});
 }
 
+void Protocol::new_parallel(int pos, int x, int y) {
+  this->protocol["Line"][pos] = {
+    {"func", "parallel"},
+    {"type", "Line"},
+    {"args", {x, y}}
+  };
+  this->protocol["order"].push_back({"Line", pos});
+}
+
 void Protocol::new_inter_ll(int pos, int x, int y) {
   this->protocol["Point"][pos] = {
     {"func", "interLL"},
@@ -93,7 +102,7 @@ void Protocol::new_inter_ll(int pos, int x, int y) {
   this->protocol["order"].push_back({"Point", pos});
 }
 
-void Protocol::new_line(int pos, int x, int y, bool state) {
+void Protocol::new_line(int pos, int x, int y, int state) {
   this->protocol["Line"][pos] = {
     {"func", "newLine"},
     {"type", "Line"},

@@ -13,10 +13,6 @@ using json = nlohmann::json;
 
 class GeometryVisual {
  private:
-  std::vector<GPoint> points;
-  std::vector<GLine> lines;
-  std::vector<GCircle> circles;
-
   std::vector<GPoint> live_stack;
   std::vector<GLine> live_stack_lines;
   std::vector<GCircle> live_stack_circles;
@@ -24,6 +20,11 @@ class GeometryVisual {
   int X_MENU_BORDER;
 
  public:
+  std::vector<GPoint> points;
+  std::vector<GLine> lines;
+  std::vector<GCircle> circles;
+
+
   int current_tool = 0;
 
   bool isDragging = false;

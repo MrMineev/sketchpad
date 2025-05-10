@@ -38,6 +38,8 @@ struct ToolView {
     "Incenter",
     "Excenter",
     "Intersect Line & Circle",
+    "SEARCHER TACTIC",
+    "Parallel Line",
     "Save",
     "Open",
   };
