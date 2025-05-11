@@ -152,7 +152,7 @@ void GeometryVisual::rebuild() {
       );
       pair<pair<ld, ld>, pair<ld, ld>> gen = l.gen_points();
       this->lines.push_back(GLine(
-        gen.first.first, gen.first.second, gen.second.first, gen.second.second, 0
+        gen.first.first, gen.first.second, gen.second.first, gen.second.second, 1
       ));
     } else if (command_type == "parallel") {
       int p1 = information_command["args"][0];

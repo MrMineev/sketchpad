@@ -39,8 +39,11 @@ namespace GeoGenie {
       }
     }
 
+    int cnt = 0;
     for (GeoProp::Colinearity c : proper.col) {
-      prot->new_line(machine.lines.size(), c.i1, c.i2, 2);
+      // cout << "new property " << c.i1 << " " << c.i2 << endl;
+      prot->new_line(machine.lines.size() + cnt, c.i1, c.i2, 2);
+      cnt++;
     }
 
     return proper;
