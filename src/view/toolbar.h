@@ -40,6 +40,8 @@ struct ToolView {
     "Intersect Line & Circle",
     "SEARCHER TACTIC",
     "Parallel Line",
+    "Conic (Through Five Points)",
+    "Cubic (Through Nine Points)",
     "Save",
     "Open",
   };

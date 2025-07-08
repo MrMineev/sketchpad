@@ -3,6 +3,8 @@
 #include "primitives/point.h"
 #include "primitives/line.h"
 #include "primitives/circle.h"
+#include "primitives/conic.h"
+#include "primitives/cubic.h"
 
 #include "protocol/protocol.h"
 
@@ -23,6 +25,8 @@ class GeometryVisual {
   std::vector<GPoint> points;
   std::vector<GLine> lines;
   std::vector<GCircle> circles;
+  std::vector<GConic> conics;
+  std::vector<GCubic> cubics;
 
 
   int current_tool = 0;

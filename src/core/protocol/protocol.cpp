@@ -121,6 +121,24 @@ void Protocol::new_circle(int pos, int x, int y) {
   this->protocol["order"].push_back({"Circle", pos});
 }
 
+void Protocol::new_conic(int pos, int x1, int x2, int x3, int x4, int x5) {
+  this->protocol["Conic"][pos] = {
+    {"func", "newConic"},
+    {"type", "Conic"},
+    {"args", {x1, x2, x3, x4, x5}}
+  };
+  this->protocol["order"].push_back({"Conic", pos});
+}
+
+void Protocol::new_cubic(int pos, int x1, int x2, int x3, int x4, int x5, int x6, int x7, int x8, int x9) {
+  this->protocol["Cubic"][pos] = {
+    {"func", "newCubic"},
+    {"type", "Cubic"},
+    {"args", {x1, x2, x3, x4, x5, x6, x7, x8, x9}}
+  };
+  this->protocol["order"].push_back({"Cubic", pos});
+}
+
 std::string Protocol::get_string_format() {
   return this->protocol.dump();
 }

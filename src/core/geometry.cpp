@@ -31,6 +31,8 @@ void GeometryVisual::rebuild() {
   this->lines.clear();
   this->circles.clear();
   this->points.clear();
+  this->conics.clear();
+  this->cubics.clear();
 
   for (auto &obj : protocol.get_order()) {
     string return_type = obj.first;
@@ -190,6 +192,42 @@ void GeometryVisual::rebuild() {
       );
       // this->points[p] = GPoint(new_loc.x, new_loc.y);
       this->points.push_back(GPoint(new_loc.x, new_loc.y));
+    } else if (command_type == "newConic") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
+      int p3 = information_command["args"][2];
+      int p4 = information_command["args"][3];
+      int p5 = information_command["args"][4];
+      AlgGeom::Conic c = AlgGeom::CoreGeometryTools::fitConicThrough5(
+        AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
+        AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos),
+        AlgGeom::Point(this->points[p3].x_pos, this->points[p3].y_pos),
+        AlgGeom::Point(this->points[p4].x_pos, this->points[p4].y_pos),
+        AlgGeom::Point(this->points[p5].x_pos, this->points[p5].y_pos)
+      );
+      this->conics.push_back(GConic(c.a, c.b, c.c, c.d, c.e, c.f));
+    } else if (command_type == "newCubic") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
+      int p3 = information_command["args"][2];
+      int p4 = information_command["args"][3];
+      int p5 = information_command["args"][4];
+      int p6 = information_command["args"][5];
+      int p7 = information_command["args"][6];
+      int p8 = information_command["args"][7];
+      int p9 = information_command["args"][8];
+      AlgGeom::Cubic c = AlgGeom::CoreGeometryTools::fitCubicThrough9(
+        AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
+        AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos),
+        AlgGeom::Point(this->points[p3].x_pos, this->points[p3].y_pos),
+        AlgGeom::Point(this->points[p4].x_pos, this->points[p4].y_pos),
+        AlgGeom::Point(this->points[p5].x_pos, this->points[p5].y_pos),
+        AlgGeom::Point(this->points[p6].x_pos, this->points[p6].y_pos),
+        AlgGeom::Point(this->points[p7].x_pos, this->points[p7].y_pos),
+        AlgGeom::Point(this->points[p8].x_pos, this->points[p8].y_pos),
+        AlgGeom::Point(this->points[p9].x_pos, this->points[p9].y_pos)
+      );
+      this->cubics.push_back(GCubic(c.a, c.b, c.c, c.d, c.e, c.f, c.g, c.h, c.i, c.j));
     } else {
       std::cerr << "[ERROR]: unknown command type => " << command_type << std::endl;
     }
@@ -403,6 +441,20 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
           p.index = index_search;
           this->live_stack.push_back(p);
         }
+      }
+    }
+
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 15) {
+      if (this->live_stack.size() <= 5) {
+        p.index = index_search;
+        this->live_stack.push_back(p);
+      }
+    }
+
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 16) {
+      if (this->live_stack.size() <= 9) {
+        p.index = index_search;
+        this->live_stack.push_back(p);
       }
     }
   }
@@ -723,8 +775,67 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     this->live_stack_circles.clear();
   }
 
+  if (this->current_tool == 15 && this->live_stack.size() == 5) {
+    cout << "new Conic!" << endl;
+    AlgGeom::Conic c = AlgGeom::CoreGeometryTools::fitConicThrough5(
+      AlgGeom::Point(this->live_stack[0].x_pos, this->live_stack[0].y_pos),
+      AlgGeom::Point(this->live_stack[1].x_pos, this->live_stack[1].y_pos),
+      AlgGeom::Point(this->live_stack[2].x_pos, this->live_stack[2].y_pos),
+      AlgGeom::Point(this->live_stack[3].x_pos, this->live_stack[3].y_pos),
+      AlgGeom::Point(this->live_stack[4].x_pos, this->live_stack[4].y_pos)
+    );
+    cout << "points " << this->live_stack[0].x_pos << " " << this->live_stack[0].y_pos << endl;
+    cout << "points " << this->live_stack[1].x_pos << " " << this->live_stack[1].y_pos << endl;
+cout << "points " << this->live_stack[2].x_pos << " " << this->live_stack[2].y_pos << endl;
+cout << "points " << this->live_stack[3].x_pos << " " << this->live_stack[3].y_pos << endl;
+cout << "points " << this->live_stack[4].x_pos << " " << this->live_stack[4].y_pos << endl;
+    cout << "Coefficients: " << c.a << " " << c.b << " " << c.c << " " << c.d << " " << c.e << " " << c.f << endl;
 
-  if (this->current_tool == 15) {
+    this->conics.push_back(GConic(
+        c.a, c.b, c.c, c.d, c.e, c.f
+    ));
+    protocol.new_conic(this->conics.size() - 1,
+        this->live_stack[0].index,
+        this->live_stack[1].index,
+        this->live_stack[2].index,
+        this->live_stack[3].index,
+        this->live_stack[4].index
+    );
+
+    this->live_stack.clear();
+  }
+
+  if (this->current_tool == 16 && this->live_stack.size() == 9) {
+    cout << "new Cubic!" << endl;
+    AlgGeom::Cubic c = AlgGeom::CoreGeometryTools::fitCubicThrough9(
+      AlgGeom::Point(this->live_stack[0].x_pos, this->live_stack[0].y_pos),
+      AlgGeom::Point(this->live_stack[1].x_pos, this->live_stack[1].y_pos),
+      AlgGeom::Point(this->live_stack[2].x_pos, this->live_stack[2].y_pos),
+      AlgGeom::Point(this->live_stack[3].x_pos, this->live_stack[3].y_pos),
+      AlgGeom::Point(this->live_stack[4].x_pos, this->live_stack[4].y_pos),
+      AlgGeom::Point(this->live_stack[5].x_pos, this->live_stack[5].y_pos),
+      AlgGeom::Point(this->live_stack[6].x_pos, this->live_stack[6].y_pos),
+      AlgGeom::Point(this->live_stack[7].x_pos, this->live_stack[7].y_pos),
+      AlgGeom::Point(this->live_stack[8].x_pos, this->live_stack[8].y_pos)
+    );
+    this->cubics.push_back(GCubic(
+        c.a, c.b, c.c, c.d, c.e, c.f, c.g, c.h, c.i, c.j
+    ));
+    protocol.new_cubic(this->cubics.size() - 1,
+        this->live_stack[0].index,
+        this->live_stack[1].index,
+        this->live_stack[2].index,
+        this->live_stack[3].index,
+        this->live_stack[4].index,
+        this->live_stack[5].index,
+        this->live_stack[6].index,
+        this->live_stack[7].index,
+        this->live_stack[8].index
+    );
+    this->live_stack.clear();
+  }
+
+  if (this->current_tool == 17) {
     // std::cout << "data = " << protocol.get_string_format() << std::endl;
     this->protocol.save_data();
   }
@@ -739,6 +850,12 @@ void GeometryVisual::draw(sf::RenderWindow& window) {
   }
   for (auto& circle : this->circles) {
     circle.draw(window);
+  }
+  for (auto& conic : this->conics) {
+    conic.draw(window);
+  }
+  for (auto& cubic : this->cubics) {
+    cubic.draw(window);
   }
 }
 

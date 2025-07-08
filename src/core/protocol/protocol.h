@@ -28,6 +28,8 @@ class Protocol {
   void new_inter_ll(int pos, int x, int y);
   void new_line(int pos, int x, int y, int state); // state = 2 (dashed)
   void new_circle(int pos, int x, int y);
+  void new_conic(int pos, int x1, int x2, int x3, int x4, int x5);
+  void new_cubic(int pos, int x1, int x2, int x3, int x4, int x5, int x6, int x7, int x8, int x9);
   void edit_position(int pos, ld x, ld y);
 
   std::vector<std::pair<std::string, int>> get_order();
@@ -43,6 +45,8 @@ class Protocol {
       {"Point", {}},
       {"Line", {}},
       {"Circle", {}},
+      {"Conic", {}},
+      {"Cubic", {}},
       {"order", {}}
     };
   }

@@ -11,7 +11,7 @@ typedef long double ld;
 
 namespace AlgGeom {
 
-const ld EPS = 1e-8;
+const ld EPS = 1e-4;
 
 struct Point {
   ld x, y;
@@ -51,6 +51,20 @@ struct Circle {
   Circle() {}
 };
 
+struct Conic {
+  ld a, b, c, d, e, f;
+
+  Conic(ld _a, ld _b, ld _c, ld _d, ld _e, ld _f) : a(_a), b(_b), c(_c), d(_d), e(_e), f(_f) {}
+  Conic() {}
+};
+
+struct Cubic {
+  ld a, b, c, d, e, f, g,h,i,j;
+
+  Cubic(ld _a, ld _b, ld _c, ld _d, ld _e, ld _f, ld _g, ld _h, ld _i, ld _j) : a(_a), b(_b), c(_c), d(_d), e(_e), f(_f), g(_g), h(_h), i(_i), j(_j) {}
+  Cubic() {}
+};
+
 class CoreGeometryTools {
  public:
   static bool points_are_equal(Point p1, Point p2) {
@@ -85,6 +99,140 @@ class CoreGeometryTools {
       AlgGeom::CoreGeometryTools::midpoint(p1, p2),
       AlgGeom::Line(p1, p2)
     );
+  }
+
+  // conic through five points
+  //
+  static Conic fitConicThrough5(Point p1, Point p2, Point p3, Point p4, Point p5) {
+    // Build augmented 5×6 matrix for unknowns [a,b,c,d,e] with f fixed = 1.
+    ld M[5][6];
+    const Point pts[5] = {p1, p2, p3, p4, p5};
+    for (int i = 0; i < 5; ++i) {
+        ld x = pts[i].x, y = pts[i].y;
+        M[i][0] = x*x;      // a·x^2
+        M[i][1] = x*y;      // b·x·y
+        M[i][2] = y*y;      // c·y^2
+        M[i][3] = x;        // d·x
+        M[i][4] = y;        // e·y
+        M[i][5] = -1.0;    // RHS = –f (we set f=1)
+    }
+
+    const ld EPS = std::numeric_limits<ld>::epsilon() * 1e3L;
+    int n = 5, m = 5;
+
+    // Gauss–Jordan elimination with partial pivoting
+    for (int col = 0, row = 0; col < m && row < n; ++col, ++row) {
+        // 1) find pivot in col ≥ row
+        int sel = row;
+        for (int i = row + 1; i < n; ++i) {
+            if (std::fabsl(M[i][col]) > std::fabsl(M[sel][col]))
+                sel = i;
+        }
+        if (std::fabsl(M[sel][col]) < EPS) {
+            throw std::runtime_error("Singular configuration: cannot fit conic.");
+        }
+        // 2) swap pivot row into place
+        for (int j = col; j <= m; ++j)
+            std::swap(M[sel][j], M[row][j]);
+        // 3) normalize pivot row
+        ld inv = 1.0 / M[row][col];
+        for (int j = col; j <= m; ++j)
+            M[row][j] *= inv;
+        // 4) eliminate all other rows
+        for (int i = 0; i < n; ++i) {
+            if (i == row) continue;
+            ld factor = M[i][col];
+            for (int j = col; j <= m; ++j)
+                M[i][j] -= factor * M[row][j];
+        }
+    }
+
+    cout << "solutions : " << endl;
+    for (int i = 0; i <= 4; i++) {
+      cout << M[0][i] << " ";
+    }
+    cout << endl;
+
+    // Extract solution: a..e in M[0..4][5], f = 1
+    return Conic(
+        M[0][5],  // a
+        M[1][5],  // b
+        M[2][5],  // c
+        M[3][5],  // d
+        M[4][5],  // e
+        1.0      // f
+    );
+  }
+
+  // cubic through nine points
+
+  static Cubic fitCubicThrough9(
+    Point p1, Point p2, Point p3, Point p4,
+    Point p5, Point p6, Point p7, Point p8,
+    Point p9) {
+      // 9 equations in 9 unknowns [a..i], with j fixed = 1
+      const Point pts[9] = {p1,p2,p3,p4,p5,p6,p7,p8,p9};
+      ld M[9][10];  // 9 rows, 9 cols for a..i, plus col 9 for RHS = –j
+
+      for(int r=0; r<9; ++r) {
+          ld x = pts[r].x, y = pts[r].y;
+          M[r][0] = x*x*x;      // a·x³
+          M[r][1] = x*x*y;      // b·x²y
+          M[r][2] = x*y*y;      // c·x y²
+          M[r][3] = y*y*y;      // d·y³
+          M[r][4] = x*x;        // e·x²
+          M[r][5] = x*y;        // f·x y
+          M[r][6] = y*y;        // g·y²
+          M[r][7] = x;          // h·x
+          M[r][8] = y;          // i·y
+          M[r][9] = -1.0L;      // RHS = –j (we set j=1)
+      }
+
+      const ld EPS = std::numeric_limits<ld>::epsilon() * 1e3L;
+      int n = 9, m = 9;
+
+      // Gauss–Jordan elimination with partial pivoting
+      for(int col = 0, row = 0; col < m && row < n; ++col, ++row) {
+          // 1) find pivot
+          int sel = row;
+          for(int i = row+1; i < n; ++i) {
+              if (std::fabsl(M[i][col]) > std::fabsl(M[sel][col]))
+                  sel = i;
+          }
+          if (std::fabsl(M[sel][col]) < EPS)
+              throw std::runtime_error("Singular configuration: cannot fit cubic.");
+
+          // 2) swap into place
+          for(int j = col; j <= m; ++j)
+              std::swap(M[sel][j], M[row][j]);
+
+          // 3) normalize pivot row
+          ld inv = 1.0L / M[row][col];
+          for(int j = col; j <= m; ++j)
+              M[row][j] *= inv;
+
+          // 4) eliminate other rows
+          for(int i = 0; i < n; ++i) {
+              if (i == row) continue;
+              ld factor = M[i][col];
+              for(int j = col; j <= m; ++j)
+                  M[i][j] -= factor * M[row][j];
+          }
+      }
+
+      // build result: a..i from M[0..8][9], j=1
+      return Cubic(
+          M[0][9],  // a
+          M[1][9],  // b
+          M[2][9],  // c
+          M[3][9],  // d
+          M[4][9],  // e
+          M[5][9],  // f
+          M[6][9],  // g
+          M[7][9],  // h
+          M[8][9],  // i
+          1.0L      // j
+      );
   }
 
   // intersection of two lines
