@@ -102,7 +102,75 @@ class CoreGeometryTools {
   }
 
   // conic through five points
-  //
+  static Conic fitConicThrough5(Point p1, Point p2, Point p3, Point p4, Point p5) {
+    const Point pts[5] = {p1,p2,p3,p4,p5};
+
+    // 1) compute column‐strengths
+    long double strength[6] = {0};
+    for (int i = 0; i < 5; ++i) {
+        ld x = pts[i].x, y = pts[i].y;
+        long double col[6] = { x*x, x*y, y*y, x, y, 1.0L };
+        for (int c = 0; c < 6; ++c)
+            strength[c] += std::fabsl(col[c]);
+    }
+    // pick the index with max strength
+    int fixCol = std::max_element(strength, strength+6) - strength;
+
+    // 2) build a 5×6 augmented matrix that omits the fixed‐col from the unknowns,
+    //    and puts it on the RHS multiplied by –1.
+    //    unknownIndices[] maps 0..4 → the five free columns
+    int unknownIndices[5], idx = 0;
+    for (int c = 0; c < 6; ++c) {
+        if (c == fixCol) continue;
+        unknownIndices[idx++] = c;
+    }
+
+    ld M[5][6];   // 5 rows, (5 unknowns + 1 RHS)
+    for (int i = 0; i < 5; ++i) {
+        ld x = pts[i].x, y = pts[i].y;
+        ld cols[6] = { x*x, x*y, y*y, x, y, 1.0L };
+        for (int j = 0; j < 5; ++j) {
+            M[i][j] = cols[ unknownIndices[j] ];
+        }
+        // RHS = –(fixedColTerm)
+        M[i][5] = -cols[ fixCol ];
+    }
+
+    // 3) Gauss–Jordan on the 5×6 matrix, exactly as before
+    const ld EPS = std::numeric_limits<ld>::epsilon() * 1e3L;
+    int n = 5, m = 5;
+    for (int col = 0, row = 0; col < m && row < n; ++col, ++row) {
+        int sel = row;
+        for (int i = row+1; i < n; ++i)
+            if (std::fabsl(M[i][col]) > std::fabsl(M[sel][col]))
+                sel = i;
+        if (std::fabsl(M[sel][col]) < EPS)
+            throw std::runtime_error("Singular configuration: cannot fit conic.");
+
+        for (int j = col; j <= m; ++j)
+            std::swap(M[sel][j], M[row][j]);
+        ld inv = 1.0L / M[row][col];
+        for (int j = col; j <= m; ++j)
+            M[row][j] *= inv;
+        for (int i = 0; i < n; ++i) {
+            if (i == row) continue;
+            ld fct = M[i][col];
+            for (int j = col; j <= m; ++j)
+                M[i][j] -= fct * M[row][j];
+        }
+    }
+
+    // 4) gather the full [a,b,c,d,e,f] back in order:
+    ld sol[6];
+    sol[fixCol] = 1.0L;           // the one we fixed
+    for (int j = 0; j < 5; ++j) {
+        sol[ unknownIndices[j] ] = M[j][5];
+    }
+
+    return Conic(sol[0], sol[1], sol[2], sol[3], sol[4], sol[5]);
+}
+
+  /*
   static Conic fitConicThrough5(Point p1, Point p2, Point p3, Point p4, Point p5) {
     // Build augmented 5×6 matrix for unknowns [a,b,c,d,e] with f fixed = 1.
     ld M[5][6];
@@ -163,78 +231,85 @@ class CoreGeometryTools {
         1.0      // f
     );
   }
+  */
 
   // cubic through nine points
 
-  static Cubic fitCubicThrough9(
+static Cubic fitCubicThrough9(
     Point p1, Point p2, Point p3, Point p4,
     Point p5, Point p6, Point p7, Point p8,
     Point p9) {
-      // 9 equations in 9 unknowns [a..i], with j fixed = 1
-      const Point pts[9] = {p1,p2,p3,p4,p5,p6,p7,p8,p9};
-      ld M[9][10];  // 9 rows, 9 cols for a..i, plus col 9 for RHS = –j
+    const Point pts[9] = {p1,p2,p3,p4,p5,p6,p7,p8,p9};
 
-      for(int r=0; r<9; ++r) {
-          ld x = pts[r].x, y = pts[r].y;
-          M[r][0] = x*x*x;      // a·x³
-          M[r][1] = x*x*y;      // b·x²y
-          M[r][2] = x*y*y;      // c·x y²
-          M[r][3] = y*y*y;      // d·y³
-          M[r][4] = x*x;        // e·x²
-          M[r][5] = x*y;        // f·x y
-          M[r][6] = y*y;        // g·y²
-          M[r][7] = x;          // h·x
-          M[r][8] = y;          // i·y
-          M[r][9] = -1.0L;      // RHS = –j (we set j=1)
-      }
+    // 1) compute column strengths for [x^3, x^2y, xy^2, y^3, x^2, xy, y^2, x, y, 1]
+    long double strength[10] = {0};
+    for (int i = 0; i < 9; ++i) {
+        ld x = pts[i].x, y = pts[i].y;
+        long double col[10] = { x*x*x, x*x*y, x*y*y, y*y*y,
+                                x*x,   x*y,   y*y,
+                                x,     y,
+                                1.0L };
+        for (int c = 0; c < 10; ++c)
+            strength[c] += std::fabsl(col[c]);
+    }
+    int fixCol = std::max_element(strength, strength+10) - strength;
 
-      const ld EPS = std::numeric_limits<ld>::epsilon() * 1e3L;
-      int n = 9, m = 9;
+    // 2) build unknownIndices[9] mapping free columns
+    int unknownIdx[9], idx = 0;
+    for (int c = 0; c < 10; ++c) {
+        if (c == fixCol) continue;
+        unknownIdx[idx++] = c;
+    }
 
-      // Gauss–Jordan elimination with partial pivoting
-      for(int col = 0, row = 0; col < m && row < n; ++col, ++row) {
-          // 1) find pivot
-          int sel = row;
-          for(int i = row+1; i < n; ++i) {
-              if (std::fabsl(M[i][col]) > std::fabsl(M[sel][col]))
-                  sel = i;
-          }
-          if (std::fabsl(M[sel][col]) < EPS)
-              throw std::runtime_error("Singular configuration: cannot fit cubic.");
+    // 3) build augmented 9×10 matrix M[..][0..8]=coeff, [..][9]=RHS
+    ld M[9][10];
+    for (int r = 0; r < 9; ++r) {
+        ld x = pts[r].x, y = pts[r].y;
+        ld col[10] = { x*x*x, x*x*y, x*y*y, y*y*y,
+                       x*x,   x*y,   y*y,
+                       x,     y,
+                       1.0L };
+        // free columns
+        for (int j = 0; j < 9; ++j)
+            M[r][j] = col[ unknownIdx[j] ];
+        // RHS = - fixed column term
+        M[r][9] = -col[ fixCol ];
+    }
 
-          // 2) swap into place
-          for(int j = col; j <= m; ++j)
-              std::swap(M[sel][j], M[row][j]);
+    // 4) Gauss–Jordan elimination
+    const ld EPS = std::numeric_limits<ld>::epsilon() * 1e3L;
+    int n = 9, m = 9;
+    for (int col = 0, row = 0; col < m && row < n; ++col, ++row) {
+        int sel = row;
+        for (int i = row+1; i < n; ++i)
+            if (std::fabsl(M[i][col]) > std::fabsl(M[sel][col]))
+                sel = i;
+        if (std::fabsl(M[sel][col]) < EPS)
+            throw std::runtime_error("Singular configuration: cannot fit cubic.");
+        for (int j = col; j <= m; ++j)
+            std::swap(M[sel][j], M[row][j]);
+        ld inv = 1.0L / M[row][col];
+        for (int j = col; j <= m; ++j)
+            M[row][j] *= inv;
+        for (int i = 0; i < n; ++i) {
+            if (i == row) continue;
+            ld fac = M[i][col];
+            for (int j = col; j <= m; ++j)
+                M[i][j] -= fac * M[row][j];
+        }
+    }
 
-          // 3) normalize pivot row
-          ld inv = 1.0L / M[row][col];
-          for(int j = col; j <= m; ++j)
-              M[row][j] *= inv;
+    // 5) reconstruct full coefficient vector [a..j]
+    ld sol[10];
+    sol[fixCol] = 1.0L;
+    for (int j = 0; j < 9; ++j)
+        sol[ unknownIdx[j] ] = M[j][9];
 
-          // 4) eliminate other rows
-          for(int i = 0; i < n; ++i) {
-              if (i == row) continue;
-              ld factor = M[i][col];
-              for(int j = col; j <= m; ++j)
-                  M[i][j] -= factor * M[row][j];
-          }
-      }
-
-      // build result: a..i from M[0..8][9], j=1
-      return Cubic(
-          M[0][9],  // a
-          M[1][9],  // b
-          M[2][9],  // c
-          M[3][9],  // d
-          M[4][9],  // e
-          M[5][9],  // f
-          M[6][9],  // g
-          M[7][9],  // h
-          M[8][9],  // i
-          1.0L      // j
-      );
-  }
-
+    return Cubic(
+        sol[0], sol[1], sol[2], sol[3], sol[4],
+        sol[5], sol[6], sol[7], sol[8], sol[9]
+    );
+}
   // intersection of two lines
   static Point inter_lines(Line l1, Line l2) {
     ld det_val = det(l1.a, l1.b, l2.a, l2.b);
