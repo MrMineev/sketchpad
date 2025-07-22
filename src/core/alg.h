@@ -2,10 +2,13 @@
 
 #include <iostream>
 #include <vector>
+#include <cmath>
+#include <complex>
 
 using namespace std;
 
 typedef long double ld;
+typedef complex<ld> cd;
 
 #define det(a, b, c, d) ((a) * (d) - (b) * (c))
 
@@ -168,7 +171,7 @@ class CoreGeometryTools {
     }
 
     return Conic(sol[0], sol[1], sol[2], sol[3], sol[4], sol[5]);
-}
+  }
 
   /*
   static Conic fitConicThrough5(Point p1, Point p2, Point p3, Point p4, Point p5) {
@@ -310,6 +313,184 @@ static Cubic fitCubicThrough9(
         sol[5], sol[6], sol[7], sol[8], sol[9]
     );
 }
+
+  static Line angle_bisector(Point a, Point b, Point c) {
+    AlgGeom::Point I = AlgGeom::CoreGeometryTools::incenter(a, b, c);
+    return AlgGeom::Line(b, I);
+  }
+
+  static Point reflect_point_over_line(Point p, Line l) {
+    // Denominator = a^2 + b^2
+    long double denom = l.a*l.a + l.b*l.b;
+    // Signed distance times (a,b)
+    long double factor = (l.a*p.x + l.b*p.y + l.c) / denom;
+    // Subtract twice the projection onto the normal
+    return Point{
+        p.x - 2*l.a * factor,
+        p.y - 2*l.b * factor
+    };
+  }
+
+  static Line reflect_line_over_line(const Line &l1, const Line &l2) {
+    // 1) pick two distinct points on l1
+    Point p1, p2;
+    if (fabsl(l1.b) > 1e-12) {
+        // let x=0 and x=1
+        p1 = Point{0.0L,           -l1.c/l1.b};
+        p2 = Point{1.0L, -(l1.a*1.0L + l1.c)/l1.b};
+    } else {
+        // vertical-ish line: let y=0 and y=1
+        p1 = Point{-l1.c/l1.a, 0.0L};
+        p2 = Point{-(l1.b*1.0L + l1.c)/l1.a, 1.0L};
+    }
+
+    // 2) reflect them across l2
+    Point r1 = AlgGeom::CoreGeometryTools::reflect_point_over_line(p1, l2);
+    Point r2 = AlgGeom::CoreGeometryTools::reflect_point_over_line(p2, l2);
+
+    // 3) compute line through r1,r2: (y1 - y2) x + (x2 - x1) y + c = 0
+    long double A = r1.y - r2.y;
+    long double B = r2.x - r1.x;
+    long double C = - (A*r1.x + B*r1.y);
+
+    return Line{A, B, C};
+  }
+
+  static Point isogonal_conjugate(Point a, Point b, Point c, Point p) {
+    AlgGeom::Line l1 = AlgGeom::CoreGeometryTools::angle_bisector(a, b, c);
+    AlgGeom::Line l2 = AlgGeom::CoreGeometryTools::angle_bisector(a, c, b);
+
+    AlgGeom::Line l = AlgGeom::CoreGeometryTools::reflect_line_over_line(
+      AlgGeom::Line(b, p),
+      l1
+    );
+    AlgGeom::Line ll = AlgGeom::CoreGeometryTools::reflect_line_over_line(
+      AlgGeom::Line(c, p),
+      l2
+    );
+    return AlgGeom::CoreGeometryTools::inter_lines(l, ll);
+  }
+
+  // intersection of two conics
+  static vector<Point> intersectConics(const Conic &C1, const Conic &C2) {
+    // Build coefficients of resultant polynomial R(x) = Res_y(C1, C2), degree ≤ 4
+    // We eliminate y via Sylvester matrix determinant:
+    // C1: c1*y^2 + (b1*x + e1)*y + (a1*x*x + d1*x + f1) = 0
+    // C2: c2*y^2 + (b2*x + e2)*y + (a2*x*x + d2*x + f2) = 0
+    // Sylvester 4×4 matrix rows: [c1, (b1 x+e1), (a1 x^2+d1 x+f1), 0;
+    //                            0, c1, (b1 x+e1), (a1 x^2+d1 x+f1);
+    //                            c2, (b2 x+e2), (a2 x^2+d2 x+f2), 0;
+    //                            0, c2, (b2 x+e2), (a2 x^2+d2 x+f2)]
+    // The determinant gives a degree-4 polynomial in x.
+    // Expand by block structure to get coefficients r0..r4
+    ld a1=C1.a, b1=C1.b, c1=C1.c, d1=C1.d, e1=C1.e, f1=C1.f;
+    ld a2=C2.a, b2=C2.b, c2=C2.c, d2=C2.d, e2=C2.e, f2=C2.f;
+
+    // Precompute powers
+    // Let U1(x) = a1 x^2 + d1 x + f1, V1(x) = b1 x + e1
+    //     U2(x) = a2 x^2 + d2 x + f2, V2(x) = b2 x + e2
+    // Sylvester determinant simplifies to:
+    // R(x) = c1^2 * U2(x)^2 - c1*c2*(U1(x)*U2(x) + V1(x)*V2(x))
+    //        + c2^2 * U1(x)^2 + (b1*e2 - b2*e1)^2 * (x^2)
+    // (one can verify this form; it's the resultant of two quadratics)
+    // For safety, we build it by symbolic expansion:
+
+    // We'll compute coefficients of R(x)=r4 x^4 + r3 x^3 + r2 x^2 + r1 x + r0
+    array<ld,5> r = {0,0,0,0,0};
+    auto add_poly = [&](const array<ld,5>& p, ld mul){
+        for(int i=0;i<5;i++) r[i] += mul*p[i];
+    };
+    // Compute poly for U1^2 * c2*c2
+    // U1^2: coeffs u10 x^4+u11 x^3+u12 x^2+u13 x+u14
+    array<ld,5> u1sq = {
+        a1*a1,
+        2*a1*d1,
+        2*a1*f1 + d1*d1,
+        2*d1*f1,
+        f1*f1
+    };
+    add_poly(u1sq, c2*c2);
+
+    // poly for U2^2 * c1*c1
+    array<ld,5> u2sq = {
+        a2*a2,
+        2*a2*d2,
+        2*a2*f2 + d2*d2,
+        2*d2*f2,
+        f2*f2
+    };
+    add_poly(u2sq, c1*c1);
+
+    // poly for -2*c1*c2 * U1*U2
+    array<ld,5> u1u2 = {0,0,0,0,0};
+    // U1*U2: degree 4
+    // coefficients by convolution:
+    array<ld,3> U1 = {a1, d1, f1}, U2 = {a2, d2, f2};
+    for(int i=0;i<3;i++) for(int j=0;j<3;j++){
+        u1u2[i+j] += U1[i]*U2[j];
+    }
+    add_poly(u1u2, -2*c1*c2);
+
+    // poly for -2*c1*c2 * V1*V2 * x^2? Actually resultant includes term from y-coeff elimination:
+    // V1*V2 = (b1 x + e1)*(b2 x + e2) = b1 b2 x^2 + (b1 e2 + b2 e1)x + e1 e2
+    array<ld,5> v1v2 = {0,0,0,0,0};
+    v1v2[2] = b1*b2;
+    v1v2[1] = b1*e2 + b2*e1;
+    v1v2[0] = e1*e2;
+    add_poly(v1v2, -c1*c2);
+
+    // Now r holds full resultant polynomial
+    // Solve quartic r[4] x^4 + r[3] x^3 + r[2] x^2 + r[1] x + r[0] = 0 via Durand–Kerner
+    int N = 4;
+    vector<cd> roots(N);
+    // initialize with roots of unity
+    const cd init = polar((ld)1.0, (ld)(2*M_PI/N));
+    for(int i=0;i<N;i++) roots[i] = pow(init,i);
+    for(int iter=0; iter<1000; ++iter) {
+        bool conv = true;
+        for(int i=0;i<N;i++){
+            cd num = ((roots[i]*(roots[i]*(roots[i]*(r[4]) + r[3]) + r[2]) + r[1])*roots[i] + r[0]);
+            cd den = 1.0;
+            for(int j=0;j<N;j++) if(i!=j) den *= (roots[i]-roots[j]);
+            cd delta = num / den;
+            roots[i] -= delta;
+            if (abs(delta) > 1e-12) conv = false;
+        }
+        if (conv) break;
+    }
+
+    vector<Point> sol;
+    for(auto &z: roots){
+        if (abs(z.imag()) > 1e-6) continue;
+        ld x = z.real();
+        // solve C1 for y: c1 y^2 + (b1 x + e1)y + (a1 x^2 + d1 x + f1)=0
+        ld A = c1;
+        ld B = b1*x + e1;
+        ld C = a1*x*x + d1*x + f1;
+        ld D = B*B - 4*A*C;
+        if (D < -EPS) continue;
+        if (D < 0) D = 0;
+        ld sq = sqrt(D);
+        ld y1 = (-B + sq)/(2*A);
+        ld y2 = (-B - sq)/(2*A);
+        sol.emplace_back(x,y1);
+        if (sq>EPS) sol.emplace_back(x,y2);
+    }
+    return sol;
+  }
+
+  static Point miquel_point(Point A, Point B, Point C, Point D) {
+    // the “diagonals” AC and BD
+    Line AC(A, C);
+    Line BD(B, D);
+
+    // their intersection
+    Point R = AlgGeom::CoreGeometryTools::inter_lines(AC, BD);
+
+    // Miquel point = isogonal conjugate of R in triangle ABC
+    return AlgGeom::CoreGeometryTools::isogonal_conjugate(A, B, C, R);
+  }
+
   // intersection of two lines
   static Point inter_lines(Line l1, Line l2) {
     ld det_val = det(l1.a, l1.b, l2.a, l2.b);

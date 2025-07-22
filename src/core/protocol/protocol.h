@@ -19,6 +19,10 @@ class Protocol {
   void new_point(int pos, long double x, long double y);
   void new_point_on_line(int pos, int line_index, long double ratio);
   void new_circumcircle(int pos, int x, int y, int z);
+  void new_angle_bisector(int pos, int x, int y, int z);
+  void new_reflect_line_over_line(int pos, int x, int y);
+  void new_isogonal_conjugate(int pos, int x, int y, int z, int w);
+  void new_reflect_point_over_line(int pos, int x, int y);
   void new_incenter(int pos, int x, int y, int z);
   void new_excenter(int pos, int x, int y, int z);
   void new_inter_lc(int pos1, int pos2, int x, int y);

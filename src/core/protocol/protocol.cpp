@@ -31,6 +31,44 @@ void Protocol::new_circumcircle(int pos, int x, int y, int z) {
   this->protocol["order"].push_back({"Circle", pos});
 }
 
+void Protocol::new_angle_bisector(int pos, int x, int y, int z) {
+  this->protocol["Line"][pos] = {
+    {"func", "newAngleBisector"},
+    {"type", "Line"},
+    {"args", {x, y, z}},
+    {"version", 1}
+  };
+  this->protocol["order"].push_back({"Line", pos});
+}
+
+void Protocol::new_reflect_line_over_line(int pos, int x, int y) {
+  this->protocol["Line"][pos] = {
+    {"func", "newReflectLineOverLine"},
+    {"type", "Line"},
+    {"args", {x, y}}
+  };
+  this->protocol["order"].push_back({"Line", pos});
+}
+
+void Protocol::new_isogonal_conjugate(int pos, int x, int y, int z, int w) {
+  this->protocol["Point"][pos] = {
+    {"func", "newIsogonalConjugate"},
+    {"type", "Point"},
+    {"args", {x, y, z, w}},
+    {"version", 1}
+  };
+  this->protocol["order"].push_back({"Point", pos});
+}
+
+void Protocol::new_reflect_point_over_line(int pos, int x, int y) {
+  this->protocol["Point"][pos] = {
+    {"func", "newReflectPointOverLine"},
+    {"type", "Point"},
+    {"args", {x, y}}
+  };
+  this->protocol["order"].push_back({"Point", pos});
+}
+
 void Protocol::new_incenter(int pos, int x, int y, int z) {
   this->protocol["Point"][pos] = {
     {"func", "new_incenter"},

@@ -42,6 +42,10 @@ struct ToolView {
     "Parallel Line",
     "Conic (Through Five Points)",
     "Cubic (Through Nine Points)",
+    "Angle Bisector",
+    "Reflect Line Over Line",
+    "Isogonal Conjugate",
+    "Reflect Point Over Line",
     "Save",
     "Open",
   };

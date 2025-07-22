@@ -228,6 +228,63 @@ void GeometryVisual::rebuild() {
         AlgGeom::Point(this->points[p9].x_pos, this->points[p9].y_pos)
       );
       this->cubics.push_back(GCubic(c.a, c.b, c.c, c.d, c.e, c.f, c.g, c.h, c.i, c.j));
+    } else if (command_type == "newAngleBisector") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
+      int p3 = information_command["args"][2];
+      AlgGeom::Line l = AlgGeom::CoreGeometryTools::angle_bisector(
+        AlgGeom::Point(this->points[0].x_pos, this->points[0].y_pos),
+        AlgGeom::Point(this->points[1].x_pos, this->points[1].y_pos),
+        AlgGeom::Point(this->points[2].x_pos, this->points[2].y_pos)
+      );
+      pair<pair<ld, ld>, pair<ld, ld>> gen = l.gen_points();
+      this->lines.push_back(GLine(
+        gen.first.first, gen.first.second, gen.second.first, gen.second.second,
+        1
+      ));
+    } else if (command_type == "newReflectLineOverLine") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
+      AlgGeom::Line l1 = AlgGeom::Line(
+        AlgGeom::Point(this->lines[p1].x1, this->lines[p1].y1),
+        AlgGeom::Point(this->lines[p1].x2, this->lines[p1].y2)
+      );
+      AlgGeom::Line l2 = AlgGeom::Line(
+        AlgGeom::Point(this->lines[p2].x1, this->lines[p2].y1),
+        AlgGeom::Point(this->lines[p2].x2, this->lines[p2].y2)
+      );
+
+      AlgGeom::Line l = AlgGeom::CoreGeometryTools::reflect_line_over_line(l1, l2);
+      pair<pair<ld, ld>, pair<ld, ld>> gen = l.gen_points();
+      this->lines.push_back(GLine(
+        gen.first.first, gen.first.second, gen.second.first, gen.second.second, 1
+      ));
+    } else if (command_type == "newIsogonalConjugate") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
+      int p3 = information_command["args"][2];
+      int p4 = information_command["args"][3];
+      AlgGeom::Point new_loc = AlgGeom::CoreGeometryTools::isogonal_conjugate(
+        AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
+        AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos),
+        AlgGeom::Point(this->points[p3].x_pos, this->points[p3].y_pos),
+        AlgGeom::Point(this->points[p4].x_pos, this->points[p4].y_pos)
+      );
+      // this->points[p] = GPoint(new_loc.x, new_loc.y);
+      this->points.push_back(GPoint(new_loc.x, new_loc.y));
+    } else if (command_type == "newReflectPointOverLine") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
+      AlgGeom::Point p = AlgGeom::CoreGeometryTools::reflect_point_over_line(
+        AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
+        AlgGeom::Line(
+          AlgGeom::Point(this->lines[p2].x1, this->lines[p2].y1),
+          AlgGeom::Point(this->lines[p2].x2, this->lines[p2].y2)
+        )
+      );
+      this->points.push_back(GPoint(
+        p.x, p.y
+      ));
     } else {
       std::cerr << "[ERROR]: unknown command type => " << command_type << std::endl;
     }
@@ -452,9 +509,49 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     }
 
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 16) {
+      
+
       if (this->live_stack.size() <= 9) {
         p.index = index_search;
         this->live_stack.push_back(p);
+      }
+    }
+
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 17) {
+      if (this->live_stack.size() <= 3) {
+        p.index = index_search;
+        this->live_stack.push_back(p);
+      }
+    }
+
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 18) {
+      if (this->live_stack_lines.size() <= 2) {
+         if (line_search != -1) {
+          this->lines[line_search].index = line_search;
+          this->live_stack_lines.push_back(this->lines[line_search]);
+         }
+      }
+    }
+
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 19) {
+      if (this->live_stack.size() <= 4) {
+        p.index = index_search;
+        this->live_stack.push_back(p);
+      }
+    }
+
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 20) {
+      cout << "click!" << endl;
+      if (this->live_stack_lines.size() <= 1) {
+        if (line_search != -1) {
+          cout << "added line!" << endl;
+          this->lines[line_search].index = line_search;
+          this->live_stack_lines.push_back(this->lines[line_search]);
+        } else if (this->live_stack.size() <= 1) {
+          cout << "added point!" << endl;
+          p.index = index_search;
+          this->live_stack.push_back(p);
+        }
       }
     }
   }
@@ -835,7 +932,92 @@ cout << "points " << this->live_stack[4].x_pos << " " << this->live_stack[4].y_p
     this->live_stack.clear();
   }
 
-  if (this->current_tool == 17) {
+  if (this->current_tool == 17 && this->live_stack.size() == 3) {
+    AlgGeom::Line l = AlgGeom::CoreGeometryTools::angle_bisector(
+      AlgGeom::Point(this->live_stack[0].x_pos, this->live_stack[0].y_pos),
+      AlgGeom::Point(this->live_stack[1].x_pos, this->live_stack[1].y_pos),
+      AlgGeom::Point(this->live_stack[2].x_pos, this->live_stack[2].y_pos)
+    );
+    pair<pair<ld, ld>, pair<ld, ld>> gen = l.gen_points();
+    this->lines.push_back(GLine(
+      gen.first.first, gen.first.second, gen.second.first, gen.second.second,
+      1
+    ));
+
+    protocol.new_angle_bisector(
+      this->lines.size() - 1,
+      this->live_stack[0].index,
+      this->live_stack[1].index,
+      this->live_stack[2].index
+    );
+
+    this->live_stack.clear();
+  }
+
+  if (this->current_tool == 18 && this->live_stack_lines.size() == 2) {
+    AlgGeom::Line l1(
+        AlgGeom::Point(this->live_stack_lines[0].x1, this->live_stack_lines[0].y1),
+        AlgGeom::Point(this->live_stack_lines[0].x2, this->live_stack_lines[0].y2)
+    );
+    AlgGeom::Line l2(
+        AlgGeom::Point(this->live_stack_lines[1].x1, this->live_stack_lines[1].y1),
+        AlgGeom::Point(this->live_stack_lines[1].x2, this->live_stack_lines[1].y2)
+    );
+    AlgGeom::Line l = AlgGeom::CoreGeometryTools::reflect_line_over_line(l1, l2);
+    pair<pair<ld, ld>, pair<ld, ld>> gen = l.gen_points();
+    this->lines.push_back(GLine(
+      gen.first.first, gen.first.second, gen.second.first, gen.second.second,
+      1
+    ));
+
+    protocol.new_reflect_line_over_line(
+        this->lines.size() - 1,
+        this->live_stack_lines[0].index,
+        this->live_stack_lines[1].index
+    );
+
+    this->live_stack_lines.clear();
+  }
+
+  if (this->current_tool == 19 && this->live_stack.size() == 4) {
+    AlgGeom::Point p = AlgGeom::CoreGeometryTools::isogonal_conjugate(
+      AlgGeom::Point(this->live_stack[0].x_pos, this->live_stack[0].y_pos),
+      AlgGeom::Point(this->live_stack[1].x_pos, this->live_stack[1].y_pos),
+      AlgGeom::Point(this->live_stack[2].x_pos, this->live_stack[2].y_pos),
+      AlgGeom::Point(this->live_stack[3].x_pos, this->live_stack[3].y_pos)
+    );
+    this->points.push_back(
+      GPoint(p.x, p.y)
+    );
+
+    protocol.new_isogonal_conjugate(this->points.size() - 1, this->live_stack[0].index, this->live_stack[1].index, this->live_stack[2].index, this->live_stack[3].index);
+
+    this->live_stack.clear();
+  }
+
+  if (this->current_tool == 20 && this->live_stack.size() == 1 && this->live_stack_lines.size() == 1) {
+    cout << "Reflecting!" << endl;
+    AlgGeom::Point p = AlgGeom::CoreGeometryTools::reflect_point_over_line(
+      AlgGeom::Point(this->live_stack[0].x_pos, this->live_stack[0].y_pos),
+      AlgGeom::Line(
+        AlgGeom::Point(this->live_stack_lines[0].x1, this->live_stack_lines[0].y1),
+        AlgGeom::Point(this->live_stack_lines[0].x2, this->live_stack_lines[0].y2)
+      )
+    );
+    this->points.push_back(
+      GPoint(p.x, p.y)
+    );
+    protocol.new_reflect_point_over_line(
+      this->points.size() - 1,
+      this->live_stack[0].index,
+      this->live_stack_lines[0].index
+    );
+
+    this->live_stack.clear();
+    this->live_stack_lines.clear();
+  }
+
+  if (this->current_tool == 21) {
     // std::cout << "data = " << protocol.get_string_format() << std::endl;
     this->protocol.save_data();
   }
