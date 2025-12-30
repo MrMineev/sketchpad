@@ -6,8 +6,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # SFML include and library paths (Homebrew on Apple Silicon)
-set(SFML_INCLUDE_DIR "/opt/homebrew/Cellar/sfml/2.6.1/include")
-set(SFML_LIBRARY_DIR "/opt/homebrew/Cellar/sfml/2.6.1/lib")
+# set(SFML_INCLUDE_DIR "/opt/homebrew/Cellar/sfml/2.6.1/include")
+# set(SFML_LIBRARY_DIR "/opt/homebrew/Cellar/sfml/2.6.1/lib")
+set(SFML_INCLUDE_DIR "SFML/include")
 
 # Add include directories
 include_directories(${SFML_INCLUDE_DIR})

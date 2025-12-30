@@ -36,6 +36,8 @@ class Protocol {
   void new_cubic(int pos, int x1, int x2, int x3, int x4, int x5, int x6, int x7, int x8, int x9);
   void edit_position(int pos, ld x, ld y);
 
+  void delete_obj(std::string type, int pos);
+
   std::vector<std::pair<std::string, int>> get_order();
   json get_info(std::string &s, int index);
 

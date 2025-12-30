@@ -214,26 +214,108 @@ void Protocol::edit_position(int follower, ld px, ld py) {
   this->protocol["Point"][follower]["location"][1] = py;
 }
 
+void Protocol::delete_obj(std::string start_cat, int pos) {
+  std::vector<std::string> categories = {"Point", "Line", "Circle", "Conic", "Cubic"};
 
+  std::vector<std::pair<std::string,int>> queue;
+  queue.emplace_back(start_cat, pos);
 
+  std::vector<std::string> visited;
 
+  auto is_valid_dependency = [&](const std::string& dep_cat,
+                                const json& val) -> bool {
+    if (!val.contains("func")) return false;
+    std::string f = val["func"];
 
+    if (start_cat == "Point") {
+      return true; // many objects depend on points
+    }
+    if (start_cat == "Line") {
+      return f == "newPointOnLine" ||
+             f == "interLC" ||
+             f == "newReflectLineOverLine" ||
+             f == "parallel" ||
+             f == "perpNormal";
+    }
+    if (start_cat == "Circle") {
+      return f == "interLC";
+    }
+    return false;
+  };
 
+  for (size_t qi = 0; qi < queue.size(); ++qi) {
+    auto [cur_cat, cur_pos] = queue[qi];
+    std::string cur_key = cur_cat + ":" + std::to_string(cur_pos);
+    if (std::find(visited.begin(), visited.end(), cur_key) != visited.end())
+      continue;
 
+    visited.push_back(cur_key);
 
+    for (const auto &cat : categories) {
+      if (!this->protocol.contains(cat)) continue;
+      const json &container = this->protocol[cat];
+      if (container.is_null()) continue;
 
+      if (container.is_array()) {
+        for (size_t i = 0; i < container.size(); ++i) {
+          const json &val = container[i];
+          if (!val.is_object()) continue;
+          if (!is_valid_dependency(cat, val)) continue;
 
+          if (val.contains("args") && val["args"].is_array()) {
+            for (const auto &arg : val["args"]) {
+              if (arg.is_number_integer() && arg.get<int>() == cur_pos) {
+                queue.emplace_back(cat, static_cast<int>(i));
+                break;
+              }
+            }
+          }
+        }
+      } else if (container.is_object()) {
+        for (auto &[k, val] : container.items()) {
+          int idx;
+          try { idx = std::stoi(k); } catch (...) { continue; }
+          if (!is_valid_dependency(cat, val)) continue;
 
+          if (val.contains("args") && val["args"].is_array()) {
+            for (const auto &arg : val["args"]) {
+              if (arg.is_number_integer() && arg.get<int>() == cur_pos) {
+                queue.emplace_back(cat, idx);
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 
+  // Delete
+  for (const auto &vk : visited) {
+    auto p = vk.find(':');
+    std::string cat = vk.substr(0, p);
+    int idx = std::stoi(vk.substr(p + 1));
 
+    if (!this->protocol.contains(cat)) continue;
+    json &container = this->protocol[cat];
 
+    if (container.is_array()) {
+      if (idx >= 0 && (size_t)idx < container.size())
+        container[idx] = nullptr;
+    } else if (container.is_object()) {
+      container.erase(std::to_string(idx));
+    }
+  }
 
-
-
-
-
-
-
-
-
+  // Rebuild order
+  json new_order = json::array();
+  for (const auto &e : this->protocol["order"]) {
+    std::string cat = e[0];
+    int idx = e[1];
+    std::string key = cat + ":" + std::to_string(idx);
+    if (std::find(visited.begin(), visited.end(), key) == visited.end())
+      new_order.push_back(e);
+  }
+  this->protocol["order"] = new_order;
+}
 

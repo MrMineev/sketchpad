@@ -1021,6 +1021,23 @@ cout << "points " << this->live_stack[4].x_pos << " " << this->live_stack[4].y_p
     // std::cout << "data = " << protocol.get_string_format() << std::endl;
     this->protocol.save_data();
   }
+
+  if (event.type == sf::Event::KeyPressed) {
+    std::cout << "NOTING" << std::endl;
+
+    if (event.key.code == sf::Keyboard::Delete || event.key.code == sf::Keyboard::BackSpace) {
+      for (GPoint p : this->live_stack) {
+        this->protocol.delete_obj("Point", p.index);
+      }
+      for (GLine l : this->live_stack_lines) {
+        this->protocol.delete_obj("Line", l.index);
+      }
+      this->live_stack.clear();
+      this->live_stack_lines.clear();
+
+      this->rebuild();
+    }
+  }
 }
 
 void GeometryVisual::draw(sf::RenderWindow& window) {
