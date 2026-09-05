@@ -309,6 +309,7 @@ namespace GeoGenie {
         const int index = machine.points.size() + cnt;
         prot->new_inter_ll(index, first, second);
         prot->protocol["Point"][index]["searcher"] = true;
+        prot->protocol["Point"][index]["label_visible"] = false;
         concurrency_markers.push_back(intersection);
         ++cnt;
       }

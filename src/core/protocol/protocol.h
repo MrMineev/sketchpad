@@ -10,6 +10,8 @@ typedef long double ld;
 
 class Protocol {
  private:
+  std::string next_point_label() const;
+  void initialize_point_metadata(int pos);
 
  public:
   json protocol;
@@ -35,6 +37,11 @@ class Protocol {
   void new_conic(int pos, int x1, int x2, int x3, int x4, int x5);
   void new_cubic(int pos, int x1, int x2, int x3, int x4, int x5, int x6, int x7, int x8, int x9);
   void edit_position(int pos, ld x, ld y);
+  void ensure_metadata();
+  void set_visibility(std::string type, int pos, bool visible);
+  void set_point_label_visibility(int pos, bool visible);
+  void set_point_label(int pos, std::string label);
+  void show_all();
 
   void delete_obj(std::string type, int pos);
   void delete_searcher_objects();

@@ -1,4 +1,5 @@
 #include <SFML/Graphics.hpp>
+#include <string>
 
 class GPoint {
 public:
@@ -6,6 +7,9 @@ public:
   sf::CircleShape shape;
 
   int index;
+  std::string label;
+  bool visible = true;
+  bool label_visible = true;
 
   GPoint(float x, float y) {
     x_pos = x;

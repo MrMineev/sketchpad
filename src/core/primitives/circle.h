@@ -5,6 +5,7 @@ public:
   float x_pos, y_pos, radius;
 
   int index = 0;
+  bool visible = true;
 
   sf::CircleShape shape;
 

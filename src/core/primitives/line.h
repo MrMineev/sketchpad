@@ -16,6 +16,7 @@ class GLine {
  public:
   int index = 0;
   int line_type = 0;
+  bool visible = true;
   float x1, y1, x2, y2;
   sf::VertexArray line;
 

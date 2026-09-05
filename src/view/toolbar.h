@@ -46,6 +46,10 @@ struct ToolView {
     "Reflect Line Over Line",
     "Isogonal Conjugate",
     "Reflect Point Over Line",
+    "Hide Object",
+    "Hide Label",
+    "Rename Point",
+    "Show All",
     "Save",
     "Open",
   };
@@ -58,7 +62,11 @@ struct ToolView {
   void setup() {
     for (ll i = 0; i < (ll)tools_names.size(); i++) {
       gui::Button* button = new gui::Button(tools_names[i]);
-      if (i < (ll)tools_names.size() - 2) {
+      if (tools_names[i] == "Show All") {
+        button->setCallback([this] {
+          geomv->show_all();
+        });
+      } else if (i < (ll)tools_names.size() - 2) {
         button->setCallback([this, i] {
           geomv->current_tool = i;
         });

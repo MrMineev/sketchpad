@@ -28,6 +28,7 @@ void GeometryVisual::load_configuration(std::string &filepath) {
 }
 
 void GeometryVisual::rebuild() {
+  this->protocol.ensure_metadata();
   this->lines.clear();
   this->circles.clear();
   this->points.clear();
@@ -290,9 +291,21 @@ void GeometryVisual::rebuild() {
     }
   }
 
-  for (int i = 0; i < this->points.size(); ++i) this->points[i].index = i;
-  for (int i = 0; i < this->lines.size(); ++i) this->lines[i].index = i;
-  for (int i = 0; i < this->circles.size(); ++i) this->circles[i].index = i;
+  for (int i = 0; i < this->points.size(); ++i) {
+    this->points[i].index = i;
+    const json &point = this->protocol.protocol["Point"][i];
+    this->points[i].label = point.value("label", "");
+    this->points[i].visible = point.value("visible", true);
+    this->points[i].label_visible = point.value("label_visible", true);
+  }
+  for (int i = 0; i < this->lines.size(); ++i) {
+    this->lines[i].index = i;
+    this->lines[i].visible = this->protocol.protocol["Line"][i].value("visible", true);
+  }
+  for (int i = 0; i < this->circles.size(); ++i) {
+    this->circles[i].index = i;
+    this->circles[i].visible = this->protocol.protocol["Circle"][i].value("visible", true);
+  }
 }
 
 void GeometryVisual::delete_object(std::string type, int index) {
@@ -344,6 +357,18 @@ int GeometryVisual::take_inversion_request() {
   return request;
 }
 
+int GeometryVisual::take_rename_point_request() {
+  const int request = this->rename_point_request;
+  this->rename_point_request = -1;
+  return request;
+}
+
+void GeometryVisual::show_all() {
+  this->protocol.show_all();
+  this->current_tool = 0;
+  this->rebuild();
+}
+
 void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion_circle) {
   this->points.clear();
   this->lines.clear();
@@ -363,7 +388,7 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
     return objects.is_array() && index >= 0 && index < objects.size() && objects[index].is_object() &&
            objects[index].value("searcher", false);
   };
-  auto add_line = [&](AlgGeom::Point point, AlgGeom::Point direction) {
+  auto add_line = [&](AlgGeom::Point point, AlgGeom::Point direction, bool visible) {
     const ld length = sqrt(direction.x * direction.x + direction.y * direction.y);
     if (length < AlgGeom::EPS) return;
     direction.x /= length;
@@ -373,6 +398,7 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
       point.x + direction.x * 5000, point.y + direction.y * 5000, 0
     );
     line.line_type = 1;
+    line.visible = visible;
     line.index = this->lines.size();
     this->lines.push_back(line);
   };
@@ -385,6 +411,9 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
       point, AlgGeom::Circle(center, base.radius)
     );
     GPoint result(inverted.x, inverted.y);
+    result.label = source.points[i].label;
+    result.visible = source.points[i].visible;
+    result.label_visible = source.points[i].label_visible;
     result.index = this->points.size();
     this->points.push_back(result);
   }
@@ -399,7 +428,7 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
     if (norm < AlgGeom::EPS) continue;
     const ld distance = abs(line.a * center.x + line.b * center.y + line.c) / norm;
     if (distance < AlgGeom::EPS) {
-      add_line(center, AlgGeom::Point(-line.b, line.a));
+      add_line(center, AlgGeom::Point(-line.b, line.a), source.lines[i].visible);
     } else {
       const AlgGeom::Point closest = AlgGeom::CoreGeometryTools::project_point_to_line(center, line);
       const AlgGeom::Point image = AlgGeom::CoreGeometryTools::inversion_point(
@@ -410,6 +439,7 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
         inverted_center.x, inverted_center.y,
         AlgGeom::CoreGeometryTools::dist_points(inverted_center, center)
       ));
+      this->circles.back().visible = source.lines[i].visible;
       this->circles.back().index = this->circles.size() - 1;
     }
   }
@@ -429,7 +459,7 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
         center.x + offset.x * radius_squared / (2 * offset_squared),
         center.y + offset.y * radius_squared / (2 * offset_squared)
       );
-      add_line(point, AlgGeom::Point(-offset.y, offset.x));
+      add_line(point, AlgGeom::Point(-offset.y, offset.x), source.circles[i].visible);
     } else {
       const ld factor = radius_squared / denominator;
       this->circles.push_back(GCircle(
@@ -437,6 +467,7 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
         center.y + factor * offset.y,
         abs(factor) * source_radius
       ));
+      this->circles.back().visible = source.circles[i].visible;
       this->circles.back().index = this->circles.size() - 1;
     }
   }
@@ -444,6 +475,7 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
 
 pair<pair<int, pair<int, int>>, GPoint> GeometryVisual::point_searcher(GPoint p) {
   for (int i = 0; i < this->points.size(); i++) {
+    if (!this->points[i].visible) continue;
     if (AlgGeom::CoreGeometryTools::dist_points(
       AlgGeom::Point(p.x_pos, p.y_pos),
       AlgGeom::Point(this->points[i].x_pos, this->points[i].y_pos)
@@ -452,6 +484,7 @@ pair<pair<int, pair<int, int>>, GPoint> GeometryVisual::point_searcher(GPoint p)
     }
   }
   for (int i = 0; i < this->lines.size(); i++) {
+    if (!this->lines[i].visible) continue;
     // TODO DIFFERENTIATE BETWEEN LINE AND SEGMENT
     const ld dx = this->lines[i].x2 - this->lines[i].x1;
     const ld dy = this->lines[i].y2 - this->lines[i].y1;
@@ -478,6 +511,7 @@ pair<pair<int, pair<int, int>>, GPoint> GeometryVisual::point_searcher(GPoint p)
     }
   }
   for (int i = 0; i < this->circles.size(); i++) {
+    if (!this->circles[i].visible) continue;
     ld dist = abs(this->circles[i].radius - AlgGeom::CoreGeometryTools::dist_points(
       AlgGeom::Point(p.x_pos, p.y_pos),
       AlgGeom::Point(
@@ -729,6 +763,26 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
           this->live_stack.push_back(p);
         }
       }
+    }
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 21) {
+      if (index_search != -1) {
+        this->protocol.set_visibility("Point", index_search, false);
+      } else if (line_search != -1) {
+        this->protocol.set_visibility("Line", line_search, false);
+      } else if (circle_search != -1) {
+        this->protocol.set_visibility("Circle", circle_search, false);
+      }
+      this->selected_point = -1;
+      this->selected_line = -1;
+      this->selected_circle = -1;
+      this->rebuild();
+    }
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 22 && index_search != -1) {
+      this->protocol.set_point_label_visibility(index_search, false);
+      this->rebuild();
+    }
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 23 && index_search != -1) {
+      this->rename_point_request = index_search;
     }
   }
   if (event.type == sf::Event::MouseButtonReleased) {
@@ -1161,11 +1215,6 @@ cout << "points " << this->live_stack[4].x_pos << " " << this->live_stack[4].y_p
     this->live_stack_lines.clear();
   }
 
-  if (this->current_tool == 21) {
-    // std::cout << "data = " << protocol.get_string_format() << std::endl;
-    this->protocol.save_data();
-  }
-
   if (event.type == sf::Event::KeyPressed &&
       (event.key.code == sf::Keyboard::Delete || event.key.code == sf::Keyboard::BackSpace) &&
       this->current_tool == 0) {
@@ -1179,8 +1228,9 @@ cout << "points " << this->live_stack[4].x_pos << " " << this->live_stack[4].y_p
   }
 }
 
-void GeometryVisual::draw(sf::RenderWindow& window) {
+void GeometryVisual::draw(sf::RenderWindow& window, const sf::Font *font) {
   for (int i = 0; i < this->points.size(); ++i) {
+    if (!this->points[i].visible) continue;
     if (i == this->selected_point) {
       this->points[i].shape.setOutlineColor(sf::Color::Black);
       this->points[i].shape.setOutlineThickness(3);
@@ -1190,6 +1240,7 @@ void GeometryVisual::draw(sf::RenderWindow& window) {
     this->points[i].draw(window);
   }
   for (int i = 0; i < this->lines.size(); ++i) {
+    if (!this->lines[i].visible) continue;
     const sf::Color color = i == this->selected_line
       ? sf::Color::Black
       : (this->lines[i].line_type == 2 ? sf::Color(238, 130, 238) : sf::Color::Blue);
@@ -1199,6 +1250,7 @@ void GeometryVisual::draw(sf::RenderWindow& window) {
     this->lines[i].draw(window);
   }
   for (int i = 0; i < this->circles.size(); ++i) {
+    if (!this->circles[i].visible) continue;
     this->circles[i].shape.setOutlineColor(
       i == this->selected_circle ? sf::Color::Black : sf::Color::Green
     );
@@ -1210,6 +1262,24 @@ void GeometryVisual::draw(sf::RenderWindow& window) {
   }
   for (auto& cubic : this->cubics) {
     cubic.draw(window);
+  }
+  if (font != nullptr) {
+    for (int i = 0; i < this->points.size(); ++i) {
+      const GPoint &point = this->points[i];
+      std::string point_label = point.label;
+      if (point_label.empty() && this->protocol.protocol["Point"].is_array() &&
+          i < this->protocol.protocol["Point"].size()) {
+        point_label = this->protocol.protocol["Point"][i].value("label", "");
+      }
+      if (!point.visible || !point.label_visible || point_label.empty()) continue;
+      sf::Text label;
+      label.setFont(*font);
+      label.setString(point_label);
+      label.setCharacterSize(14);
+      label.setFillColor(sf::Color::Black);
+      label.setPosition(point.x_pos + 7, point.y_pos - 19);
+      window.draw(label);
+    }
   }
   if (this->protocol.has_searcher_objects()) {
     const float x = window.getSize().x - 44.f;

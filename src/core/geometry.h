@@ -40,6 +40,7 @@ class GeometryVisual {
   int selected_line = -1;
   int selected_circle = -1;
   int inversion_circle_request = -1;
+  int rename_point_request = -1;
 
   Protocol protocol;
 
@@ -56,13 +57,15 @@ class GeometryVisual {
 
   std::pair<std::pair<int, std::pair<int, int>>, GPoint> point_searcher(GPoint p);
   void handleEvent(const sf::Event& event, sf::RenderWindow& window, gui::Menu& menu);
-  void draw(sf::RenderWindow& window);
+  void draw(sf::RenderWindow& window, const sf::Font *font = nullptr);
   void rebuild();
   void delete_point(int index);
   void delete_line(int index);
   void delete_circle(int index);
   void hide_geo_genie();
   int take_inversion_request();
+  int take_rename_point_request();
+  void show_all();
   void build_inversion(const GeometryVisual &source, int inversion_circle);
 
   void save_configuration(std::string &filepath);

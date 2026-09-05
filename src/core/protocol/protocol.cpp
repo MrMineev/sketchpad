@@ -2,11 +2,84 @@
 
 #include <algorithm>
 #include <map>
+#include <set>
 #include <vector>
 
 typedef long double ld;
 
 using json = nlohmann::json; 
+
+std::string Protocol::next_point_label() const {
+  std::set<std::string> used;
+  if (this->protocol.contains("Point") && this->protocol["Point"].is_array()) {
+    for (const json &point : this->protocol["Point"]) {
+      if (point.is_object() && point.contains("label")) used.insert(point["label"].get<std::string>());
+    }
+  }
+  for (int index = 0;; ++index) {
+    int value = index + 1;
+    std::string label;
+    while (value > 0) {
+      --value;
+      label.insert(label.begin(), static_cast<char>('A' + value % 26));
+      value /= 26;
+    }
+    if (!used.count(label)) return label;
+  }
+}
+
+void Protocol::initialize_point_metadata(int pos) {
+  json &point = this->protocol["Point"][pos];
+  if (!point.contains("label")) point["label"] = this->next_point_label();
+  if (!point.contains("visible")) point["visible"] = true;
+  if (!point.contains("label_visible")) point["label_visible"] = true;
+}
+
+void Protocol::ensure_metadata() {
+  if (this->protocol["Point"].is_array()) {
+    for (size_t i = 0; i < this->protocol["Point"].size(); ++i) {
+      if (this->protocol["Point"][i].is_object()) this->initialize_point_metadata(i);
+    }
+  }
+  const std::vector<std::string> categories = {"Line", "Circle", "Conic", "Cubic"};
+  for (const std::string &category : categories) {
+    if (!this->protocol[category].is_array()) continue;
+    for (json &object : this->protocol[category]) {
+      if (object.is_object() && !object.contains("visible")) object["visible"] = true;
+    }
+  }
+}
+
+void Protocol::set_visibility(std::string type, int pos, bool visible) {
+  if (!this->protocol.contains(type) || !this->protocol[type].is_array() ||
+      pos < 0 || pos >= this->protocol[type].size() || !this->protocol[type][pos].is_object()) return;
+  this->protocol[type][pos]["visible"] = visible;
+}
+
+void Protocol::set_point_label_visibility(int pos, bool visible) {
+  if (!this->protocol["Point"].is_array() || pos < 0 || pos >= this->protocol["Point"].size() ||
+      !this->protocol["Point"][pos].is_object()) return;
+  this->protocol["Point"][pos]["label_visible"] = visible;
+}
+
+void Protocol::set_point_label(int pos, std::string label) {
+  if (!this->protocol["Point"].is_array() || pos < 0 || pos >= this->protocol["Point"].size() ||
+      !this->protocol["Point"][pos].is_object() || label.empty()) return;
+  this->protocol["Point"][pos]["label"] = label;
+}
+
+void Protocol::show_all() {
+  this->ensure_metadata();
+  const std::vector<std::string> categories = {"Point", "Line", "Circle", "Conic", "Cubic"};
+  for (const std::string &category : categories) {
+    if (!this->protocol[category].is_array()) continue;
+    for (json &object : this->protocol[category]) {
+      if (!object.is_object()) continue;
+      object["visible"] = true;
+      if (category == "Point") object["label_visible"] = true;
+    }
+  }
+}
 
 void Protocol::new_point(int pos, ld px, ld py) {
   this->protocol["Point"][pos] = {
@@ -14,6 +87,7 @@ void Protocol::new_point(int pos, ld px, ld py) {
     {"type", "Point"},
     {"location", {px, py}}
   };
+  this->initialize_point_metadata(pos);
   this->protocol["order"].push_back({"Point", pos});
 }
 
@@ -23,6 +97,7 @@ void Protocol::new_point_on_line(int pos, int line_index, long double ratio) {
     {"type", "Point"},
     {"args", {line_index, ratio}}
   };
+  this->initialize_point_metadata(pos);
   this->protocol["order"].push_back({"Point", pos});
 }
 
@@ -61,6 +136,7 @@ void Protocol::new_isogonal_conjugate(int pos, int x, int y, int z, int w) {
     {"args", {x, y, z, w}},
     {"version", 1}
   };
+  this->initialize_point_metadata(pos);
   this->protocol["order"].push_back({"Point", pos});
 }
 
@@ -70,6 +146,7 @@ void Protocol::new_reflect_point_over_line(int pos, int x, int y) {
     {"type", "Point"},
     {"args", {x, y}}
   };
+  this->initialize_point_metadata(pos);
   this->protocol["order"].push_back({"Point", pos});
 }
 
@@ -79,6 +156,7 @@ void Protocol::new_incenter(int pos, int x, int y, int z) {
     {"type", "Point"},
     {"args", {x, y, z}}
   };
+  this->initialize_point_metadata(pos);
   this->protocol["order"].push_back({"Point", pos});
 }
 
@@ -88,6 +166,7 @@ void Protocol::new_excenter(int pos, int x, int y, int z) {
     {"type", "Point"},
     {"args", {x, y, z}}
   };
+  this->initialize_point_metadata(pos);
   this->protocol["order"].push_back({"Point", pos});
 }
 
@@ -104,6 +183,8 @@ void Protocol::new_inter_lc(int pos1, int pos2, int x, int y) {
     {"args", {x, y}},
     {"version", 2}
   };
+  this->initialize_point_metadata(pos1);
+  this->initialize_point_metadata(pos2);
   this->protocol["order"].push_back({"Point", pos1});
   this->protocol["order"].push_back({"Point", pos2});
 }
@@ -114,6 +195,7 @@ void Protocol::new_midpoint(int pos, int x, int y) {
     {"type", "Point"},
     {"args", {x, y}}
   };
+  this->initialize_point_metadata(pos);
   this->protocol["order"].push_back({"Point", pos});
 }
 
@@ -141,6 +223,7 @@ void Protocol::new_inter_ll(int pos, int x, int y) {
     {"type", "Point"},
     {"args", {x, y}}
   };
+  this->initialize_point_metadata(pos);
   this->protocol["order"].push_back({"Point", pos});
 }
 
@@ -182,6 +265,7 @@ void Protocol::new_cubic(int pos, int x1, int x2, int x3, int x4, int x5, int x6
 }
 
 std::string Protocol::get_string_format() {
+  this->ensure_metadata();
   return this->protocol.dump();
 }
 
@@ -202,6 +286,7 @@ json Protocol::get_info(std::string &t, int index) {
 void Protocol::load_data(std::string &pathway) {
   std::ifstream f(pathway);
   this->protocol = json::parse(f);
+  this->ensure_metadata();
   std::cout << "PROTOCOL LOADED (protocol)!" << std::endl;
 }
 
