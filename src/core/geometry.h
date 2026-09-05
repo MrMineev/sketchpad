@@ -19,6 +19,8 @@ class GeometryVisual {
   std::vector<GLine> live_stack_lines;
   std::vector<GCircle> live_stack_circles;
 
+  void delete_object(std::string type, int index);
+
   int X_MENU_BORDER;
 
  public:
@@ -32,7 +34,12 @@ class GeometryVisual {
   int current_tool = 0;
 
   bool isDragging = false;
+  bool refresh_geo_genie_on_release = false;
   int follower = -1;
+  int selected_point = -1;
+  int selected_line = -1;
+  int selected_circle = -1;
+  int inversion_circle_request = -1;
 
   Protocol protocol;
 
@@ -51,6 +58,12 @@ class GeometryVisual {
   void handleEvent(const sf::Event& event, sf::RenderWindow& window, gui::Menu& menu);
   void draw(sf::RenderWindow& window);
   void rebuild();
+  void delete_point(int index);
+  void delete_line(int index);
+  void delete_circle(int index);
+  void hide_geo_genie();
+  int take_inversion_request();
+  void build_inversion(const GeometryVisual &source, int inversion_circle);
 
   void save_configuration(std::string &filepath);
   void load_configuration(std::string &filepath);

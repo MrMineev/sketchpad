@@ -37,6 +37,8 @@ class Protocol {
   void edit_position(int pos, ld x, ld y);
 
   void delete_obj(std::string type, int pos);
+  void delete_searcher_objects();
+  bool has_searcher_objects() const;
 
   std::vector<std::pair<std::string, int>> get_order();
   json get_info(std::string &s, int index);

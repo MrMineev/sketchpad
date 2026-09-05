@@ -652,28 +652,58 @@ static Cubic fitCubicThrough9(
 
   // are colinear
   static bool are_colinear(Point p1, Point p2, Point p3) {
-    ld d1 = CoreGeometryTools::dist_points(p1, p2);
-    ld d2 = CoreGeometryTools::dist_points(p2, p3);
-    ld d3 = CoreGeometryTools::dist_points(p3, p1);
-
-    vector<ld> val; val.push_back(d1); val.push_back(d2); val.push_back(d3);
-    sort(val.begin(), val.end());
-
-    return (abs(val[0] + val[1] - val[2]) < EPS);
+    const ld d1 = CoreGeometryTools::dist_points(p1, p2);
+    const ld d2 = CoreGeometryTools::dist_points(p2, p3);
+    const ld d3 = CoreGeometryTools::dist_points(p3, p1);
+    const ld longest_side = max(d1, max(d2, d3));
+    if (longest_side < EPS) return false;
+    const ld twice_area = abs((p2.x - p1.x) * (p3.y - p1.y) -
+                              (p2.y - p1.y) * (p3.x - p1.x));
+    return twice_area / longest_side < EPS;
   }
 
   // are colinear
   static bool are_cyclic(Point p1, Point p2, Point p3, Point p4) {
-    return CoreGeometryTools::points_are_equal(
-      CoreGeometryTools::inter_lines(
-        CoreGeometryTools::perp_bisector(p1, p2),
-        CoreGeometryTools::perp_bisector(p3, p4)
-      ),
-      CoreGeometryTools::inter_lines(
-        CoreGeometryTools::perp_bisector(p2, p3),
-        CoreGeometryTools::perp_bisector(p1, p4)
-      )
+    const Point points[] = {p1, p2, p3, p4};
+    for (int i = 0; i < 4; ++i) {
+      for (int j = i + 1; j < 4; ++j) {
+        if (CoreGeometryTools::points_are_equal(points[i], points[j])) return false;
+      }
+    }
+
+    const ld denominator = 2 * (p1.x * (p2.y - p3.y) +
+                                p2.x * (p3.y - p1.y) +
+                                p3.x * (p1.y - p2.y));
+    if (abs(denominator) < EPS) return false;
+
+    const ld p1_norm = p1.x * p1.x + p1.y * p1.y;
+    const ld p2_norm = p2.x * p2.x + p2.y * p2.y;
+    const ld p3_norm = p3.x * p3.x + p3.y * p3.y;
+    const Point center(
+      (p1_norm * (p2.y - p3.y) + p2_norm * (p3.y - p1.y) +
+       p3_norm * (p1.y - p2.y)) / denominator,
+      (p1_norm * (p3.x - p2.x) + p2_norm * (p1.x - p3.x) +
+       p3_norm * (p2.x - p1.x)) / denominator
     );
+    const ld radius = CoreGeometryTools::dist_points(center, p1);
+    return abs(CoreGeometryTools::dist_points(center, p4) - radius) < EPS;
+  }
+
+  static bool are_concurrent(Line l1, Line l2, Line l3) {
+    auto intersects_on = [](Line first, Line second, Line third) {
+      const ld first_norm = sqrt(first.a * first.a + first.b * first.b);
+      const ld second_norm = sqrt(second.a * second.a + second.b * second.b);
+      const ld third_norm = sqrt(third.a * third.a + third.b * third.b);
+      if (first_norm < EPS || second_norm < EPS || third_norm < EPS) return false;
+      const ld denominator = first.a * second.b - second.a * first.b;
+      if (abs(denominator) < EPS * first_norm * second_norm) return false;
+      const Point intersection(
+        (first.b * second.c - second.b * first.c) / denominator,
+        (first.c * second.a - second.c * first.a) / denominator
+      );
+      return abs(third.a * intersection.x + third.b * intersection.y + third.c) / third_norm < EPS;
+    };
+    return intersects_on(l1, l2, l3) || intersects_on(l1, l3, l2) || intersects_on(l2, l3, l1);
   }
 
   // are parallel

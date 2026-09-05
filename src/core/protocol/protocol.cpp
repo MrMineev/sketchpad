@@ -1,5 +1,9 @@
 #include "protocol.h"
 
+#include <algorithm>
+#include <map>
+#include <vector>
+
 typedef long double ld;
 
 using json = nlohmann::json; 
@@ -215,107 +219,160 @@ void Protocol::edit_position(int follower, ld px, ld py) {
 }
 
 void Protocol::delete_obj(std::string start_cat, int pos) {
-  std::vector<std::string> categories = {"Point", "Line", "Circle", "Conic", "Cubic"};
+  const std::vector<std::string> categories = {"Point", "Line", "Circle", "Conic", "Cubic"};
 
-  std::vector<std::pair<std::string,int>> queue;
-  queue.emplace_back(start_cat, pos);
+  auto dependency_type = [](const json &value, size_t arg) -> std::string {
+    if (!value.contains("func")) return "";
+    const std::string func = value["func"];
 
-  std::vector<std::string> visited;
-
-  auto is_valid_dependency = [&](const std::string& dep_cat,
-                                const json& val) -> bool {
-    if (!val.contains("func")) return false;
-    std::string f = val["func"];
-
-    if (start_cat == "Point") {
-      return true; // many objects depend on points
+    if (func == "newPointOnLine") return arg == 0 ? "Line" : "";
+    if (func == "interLL" || func == "newReflectLineOverLine") return "Line";
+    if (func == "interLC") return arg == 0 ? "Line" : "Circle";
+    if (func == "newReflectPointOverLine" || func == "perpNormal" || func == "parallel") {
+      return arg == 0 ? "Point" : "Line";
     }
-    if (start_cat == "Line") {
-      return f == "newPointOnLine" ||
-             f == "interLC" ||
-             f == "newReflectLineOverLine" ||
-             f == "parallel" ||
-             f == "perpNormal";
+    if (func == "newLine" || func == "newCircle" || func == "midpoint" ||
+        func == "circumcircle" || func == "new_incenter" || func == "new_excenter" ||
+        func == "newIsogonalConjugate" || func == "newConic" || func == "newCubic" ||
+        func == "newAngleBisector") {
+      return "Point";
     }
-    if (start_cat == "Circle") {
-      return f == "interLC";
-    }
-    return false;
+    return "";
   };
 
-  for (size_t qi = 0; qi < queue.size(); ++qi) {
-    auto [cur_cat, cur_pos] = queue[qi];
-    std::string cur_key = cur_cat + ":" + std::to_string(cur_pos);
-    if (std::find(visited.begin(), visited.end(), cur_key) != visited.end())
-      continue;
-
-    visited.push_back(cur_key);
-
-    for (const auto &cat : categories) {
-      if (!this->protocol.contains(cat)) continue;
-      const json &container = this->protocol[cat];
-      if (container.is_null()) continue;
-
-      if (container.is_array()) {
-        for (size_t i = 0; i < container.size(); ++i) {
-          const json &val = container[i];
-          if (!val.is_object()) continue;
-          if (!is_valid_dependency(cat, val)) continue;
-
-          if (val.contains("args") && val["args"].is_array()) {
-            for (const auto &arg : val["args"]) {
-              if (arg.is_number_integer() && arg.get<int>() == cur_pos) {
-                queue.emplace_back(cat, static_cast<int>(i));
-                break;
-              }
-            }
-          }
+  auto entries = [&](const std::string &category) {
+    std::vector<std::pair<int, json>> result;
+    if (!this->protocol.contains(category)) return result;
+    const json &container = this->protocol[category];
+    if (container.is_array()) {
+      for (size_t i = 0; i < container.size(); ++i) {
+        if (container[i].is_object()) result.emplace_back(static_cast<int>(i), container[i]);
+      }
+    } else if (container.is_object()) {
+      for (const auto &[key, value] : container.items()) {
+        try {
+          if (value.is_object()) result.emplace_back(std::stoi(key), value);
+        } catch (...) {
         }
-      } else if (container.is_object()) {
-        for (auto &[k, val] : container.items()) {
-          int idx;
-          try { idx = std::stoi(k); } catch (...) { continue; }
-          if (!is_valid_dependency(cat, val)) continue;
+      }
+      std::sort(result.begin(), result.end(), [](const auto &a, const auto &b) {
+        return a.first < b.first;
+      });
+    }
+    return result;
+  };
 
-          if (val.contains("args") && val["args"].is_array()) {
-            for (const auto &arg : val["args"]) {
-              if (arg.is_number_integer() && arg.get<int>() == cur_pos) {
-                queue.emplace_back(cat, idx);
-                break;
-              }
-            }
+  std::vector<std::pair<std::string, int>> queue = {{start_cat, pos}};
+  std::vector<std::string> deleted;
+  for (size_t qi = 0; qi < queue.size(); ++qi) {
+    const auto [current_category, current_index] = queue[qi];
+    const std::string current_key = current_category + ":" + std::to_string(current_index);
+    if (std::find(deleted.begin(), deleted.end(), current_key) != deleted.end()) continue;
+    deleted.push_back(current_key);
+
+    for (const std::string &category : categories) {
+      for (const auto &[index, value] : entries(category)) {
+        if (!value.contains("args") || !value["args"].is_array()) continue;
+        for (size_t arg = 0; arg < value["args"].size(); ++arg) {
+          if (dependency_type(value, arg) == current_category &&
+              value["args"][arg].is_number_integer() &&
+              value["args"][arg].get<int>() == current_index) {
+            queue.emplace_back(category, index);
+            break;
           }
         }
       }
     }
   }
 
-  // Delete
-  for (const auto &vk : visited) {
-    auto p = vk.find(':');
-    std::string cat = vk.substr(0, p);
-    int idx = std::stoi(vk.substr(p + 1));
+  std::map<std::string, std::map<int, int>> remapped_indices;
+  for (const std::string &category : categories) {
+    json compacted = json::array();
+    for (const auto &[old_index, value] : entries(category)) {
+      const std::string key = category + ":" + std::to_string(old_index);
+      if (std::find(deleted.begin(), deleted.end(), key) != deleted.end()) continue;
+      remapped_indices[category][old_index] = static_cast<int>(compacted.size());
+      compacted.push_back(value);
+    }
+    this->protocol[category] = compacted.empty() ? json(nullptr) : compacted;
+  }
 
-    if (!this->protocol.contains(cat)) continue;
-    json &container = this->protocol[cat];
-
-    if (container.is_array()) {
-      if (idx >= 0 && (size_t)idx < container.size())
-        container[idx] = nullptr;
-    } else if (container.is_object()) {
-      container.erase(std::to_string(idx));
+  for (const std::string &category : categories) {
+    json &container = this->protocol[category];
+    if (!container.is_array()) continue;
+    for (json &value : container) {
+      if (!value.contains("args") || !value["args"].is_array()) continue;
+      for (size_t arg = 0; arg < value["args"].size(); ++arg) {
+        const std::string referenced_category = dependency_type(value, arg);
+        if (referenced_category.empty() || !value["args"][arg].is_number_integer()) continue;
+        const int old_index = value["args"][arg].get<int>();
+        value["args"][arg] = remapped_indices[referenced_category].at(old_index);
+      }
     }
   }
 
-  // Rebuild order
   json new_order = json::array();
-  for (const auto &e : this->protocol["order"]) {
-    std::string cat = e[0];
-    int idx = e[1];
-    std::string key = cat + ":" + std::to_string(idx);
-    if (std::find(visited.begin(), visited.end(), key) == visited.end())
-      new_order.push_back(e);
+  for (const json &entry : this->protocol["order"]) {
+    const std::string category = entry[0];
+    const int old_index = entry[1];
+    const std::string key = category + ":" + std::to_string(old_index);
+    if (std::find(deleted.begin(), deleted.end(), key) == deleted.end()) {
+      new_order.push_back({category, remapped_indices[category].at(old_index)});
+    }
   }
   this->protocol["order"] = new_order;
+}
+
+bool Protocol::has_searcher_objects() const {
+  const std::vector<std::string> categories = {"Point", "Line", "Circle", "Conic", "Cubic"};
+  for (const std::string &category : categories) {
+    if (!this->protocol.contains(category)) continue;
+    const json &objects = this->protocol[category];
+    if (objects.is_array()) {
+      for (const json &object : objects) {
+        if (object.is_object() && object.value("searcher", false)) return true;
+      }
+    } else if (objects.is_object()) {
+      for (const auto &[key, object] : objects.items()) {
+        if (object.is_object() && object.value("searcher", false)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+void Protocol::delete_searcher_objects() {
+  const std::vector<std::string> categories = {"Point", "Line", "Circle", "Conic", "Cubic"};
+  while (this->has_searcher_objects()) {
+    bool removed = false;
+    for (const std::string &category : categories) {
+      const json &objects = this->protocol[category];
+      int index = -1;
+      if (objects.is_array()) {
+        for (size_t i = 0; i < objects.size(); ++i) {
+          if (objects[i].is_object() && objects[i].value("searcher", false)) {
+            index = static_cast<int>(i);
+            break;
+          }
+        }
+      } else if (objects.is_object()) {
+        for (const auto &[key, object] : objects.items()) {
+          if (object.is_object() && object.value("searcher", false)) {
+            try {
+              index = std::stoi(key);
+            } catch (...) {
+            }
+            break;
+          }
+        }
+      }
+      if (index != -1) {
+        this->delete_obj(category, index);
+        removed = true;
+        break;
+      }
+    }
+    if (!removed) break;
+  }
 }
 

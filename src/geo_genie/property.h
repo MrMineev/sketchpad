@@ -32,13 +32,21 @@ struct Perpendicular {
   Perpendicular() {}
 };
 
+struct Concurrency {
+  int i1, i2, i3;
+
+  Concurrency(int _i1, int _i2, int _i3) : i1(_i1), i2(_i2), i3(_i3) {}
+  Concurrency() {}
+};
+
 struct GeoProperties {
   std::vector<Colinearity> col;
   std::vector<Cyclic> cyc;
   std::vector<Parallel> par;
   std::vector<Perpendicular> perp;
+  std::vector<Concurrency> conc;
 
-  GeoProperties() { col.resize(0); cyc.resize(0); par.resize(0); perp.resize(0); }
+  GeoProperties() { col.resize(0); cyc.resize(0); par.resize(0); perp.resize(0); conc.resize(0); }
 };
 
 };

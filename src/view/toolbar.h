@@ -34,7 +34,7 @@ struct ToolView {
     "Line",
     "Intersect Lines",
     "Perpendicular Normal",
-    "Inversion (Partial)",
+    "Invert Diagram",
     "Incenter",
     "Excenter",
     "Intersect Line & Circle",
