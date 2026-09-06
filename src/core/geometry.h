@@ -64,6 +64,7 @@ class GeometryVisual {
 
   std::pair<std::pair<int, std::pair<int, int>>, GPoint> point_searcher(GPoint p);
   bool handleCameraEvent(const sf::Event& event, sf::RenderWindow& window);
+  void resize_camera(unsigned int width, unsigned int height);
   void handleEvent(const sf::Event& event, sf::RenderWindow& window, gui::Menu& menu);
   void draw(sf::RenderWindow& window, const sf::Font *font = nullptr);
   void rebuild();

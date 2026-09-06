@@ -502,8 +502,17 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
 
 void GeometryVisual::initialize_camera(const sf::RenderWindow &window) {
   if (this->camera_initialized) return;
-  this->camera_view = window.getDefaultView();
+  this->camera_view = window.getView();
   this->camera_initialized = true;
+}
+
+void GeometryVisual::resize_camera(unsigned int width, unsigned int height) {
+  if (!this->camera_initialized || width == 0 || height == 0) return;
+  const sf::Vector2f old_size = this->camera_view.getSize();
+  const sf::Vector2f top_left = this->camera_view.getCenter() - old_size / 2.f;
+  const sf::Vector2f new_size(width * this->camera_zoom, height * this->camera_zoom);
+  this->camera_view.setSize(new_size);
+  this->camera_view.setCenter(top_left + new_size / 2.f);
 }
 
 bool GeometryVisual::handleCameraEvent(const sf::Event& event, sf::RenderWindow& window) {

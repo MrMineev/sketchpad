@@ -121,6 +121,14 @@ signed main() {
     sf::Event event;
     while (window.pollEvent(event)) {
       bool tab_event = false;
+      if (event.type == sf::Event::Resized) {
+        const unsigned int width = std::max(1u, event.size.width);
+        const unsigned int height = std::max(1u, event.size.height);
+        window.setView(sf::View(sf::FloatRect(0, 0, width, height)));
+        toolbar.resize(height);
+        for (SketchTab &tab : tabs) tab.geometry->resize_camera(width, height);
+        tab_event = true;
+      }
       if (!triangle_center_vertices.empty()) {
         tab_event = true;
         if (event.type == sf::Event::TextEntered && event.text.unicode >= '0' && event.text.unicode <= '9' &&
@@ -207,11 +215,24 @@ signed main() {
         }
         tab_event = true;
       }
-      if (!tab_event && protocol_preview && event.type == sf::Event::MouseWheelScrolled) {
-        protocol_scroll = std::max(0, protocol_scroll - static_cast<int>(event.mouseWheelScroll.delta * 3));
-        const int line_count = protocol_preview_lines(visible_protocol(tabs, active_tab)).size();
-        protocol_scroll = std::min(protocol_scroll, std::max(0, line_count - 1));
-        tab_event = true;
+      if (!tab_event && protocol_preview &&
+          (event.type == sf::Event::MouseWheelScrolled || event.type == sf::Event::MouseWheelMoved)) {
+        const float panel_width = std::min(
+          520.f, static_cast<float>(window.getSize().x - MENU_BAR_X)
+        );
+        const float panel_x = window.getSize().x - panel_width;
+        const int mouse_x = event.type == sf::Event::MouseWheelScrolled
+          ? event.mouseWheelScroll.x : event.mouseWheel.x;
+        const int mouse_y = event.type == sf::Event::MouseWheelScrolled
+          ? event.mouseWheelScroll.y : event.mouseWheel.y;
+        if (mouse_x >= panel_x && mouse_y >= TAB_HEIGHT) {
+          const float delta = event.type == sf::Event::MouseWheelScrolled
+            ? event.mouseWheelScroll.delta : event.mouseWheel.delta;
+          protocol_scroll = std::max(0, protocol_scroll - static_cast<int>(delta * 3));
+          const int line_count = protocol_preview_lines(visible_protocol(tabs, active_tab)).size();
+          protocol_scroll = std::min(protocol_scroll, std::max(0, line_count - 1));
+          tab_event = true;
+        }
       }
       if (!tab_event && protocol_preview && event.type == sf::Event::KeyPressed &&
           event.key.code == sf::Keyboard::Escape) {

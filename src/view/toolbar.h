@@ -69,6 +69,12 @@ struct ToolView {
     menu->setPosition(10, 10 - scroll_offset);
   }
 
+  void resize(int height) {
+    toolbar_height = std::max(1, height);
+    rectangle.setSize(sf::Vector2f(toolbar_width, toolbar_height));
+    update_menu_position();
+  }
+
   bool handleEvent(const sf::Event &event) {
     float delta = 0;
     int mouse_x = toolbar_width + 1;
