@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <memory>
+#include <set>
 
 #include <SFML/Graphics.hpp>
 
@@ -29,14 +30,22 @@ const float TAB_WIDTH = 160;
 struct SketchTab {
   std::unique_ptr<GeometryVisual> geometry;
   std::string title;
-  int source_tab = -1;
+  int id = -1;
+  int source_id = -1;
   json inversion_circle;
   std::string source_signature;
 
   bool is_linked() const {
-    return source_tab != -1;
+    return source_id != -1;
   }
 };
+
+int find_tab_by_id(const std::vector<SketchTab> &tabs, int id) {
+  for (int i = 0; i < tabs.size(); ++i) {
+    if (tabs[i].id == id) return i;
+  }
+  return -1;
+}
 
 int find_inversion_circle(const Protocol &protocol, const json &definition) {
   if (!protocol.protocol.contains("Circle") || !protocol.protocol["Circle"].is_array()) return -1;
@@ -49,8 +58,10 @@ int find_inversion_circle(const Protocol &protocol, const json &definition) {
 
 void refresh_linked_tab(std::vector<SketchTab> &tabs, int index) {
   SketchTab &tab = tabs[index];
-  if (!tab.is_linked() || tab.source_tab < 0 || tab.source_tab >= tabs.size()) return;
-  GeometryVisual &source = *tabs[tab.source_tab].geometry;
+  if (!tab.is_linked()) return;
+  const int source_index = find_tab_by_id(tabs, tab.source_id);
+  if (source_index == -1) return;
+  GeometryVisual &source = *tabs[source_index].geometry;
   const std::string signature = source.protocol.get_string_format();
   if (signature == tab.source_signature) return;
   tab.geometry->build_inversion(source, find_inversion_circle(source.protocol, tab.inversion_circle));
@@ -59,7 +70,25 @@ void refresh_linked_tab(std::vector<SketchTab> &tabs, int index) {
 
 const Protocol &visible_protocol(const std::vector<SketchTab> &tabs, int active_tab) {
   const SketchTab &tab = tabs[active_tab];
-  return tab.is_linked() ? tabs[tab.source_tab].geometry->protocol : tab.geometry->protocol;
+  if (!tab.is_linked()) return tab.geometry->protocol;
+  const int source_index = find_tab_by_id(tabs, tab.source_id);
+  return source_index == -1 ? tab.geometry->protocol : tabs[source_index].geometry->protocol;
+}
+
+void close_tab_tree(std::vector<SketchTab> &tabs, int id) {
+  std::set<int> closing = {id};
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (const SketchTab &tab : tabs) {
+      if (tab.is_linked() && closing.count(tab.source_id) && closing.insert(tab.id).second) {
+        changed = true;
+      }
+    }
+  }
+  tabs.erase(std::remove_if(tabs.begin(), tabs.end(), [&](const SketchTab &tab) {
+    return closing.count(tab.id) != 0;
+  }), tabs.end());
 }
 
 std::vector<std::string> protocol_preview_lines(const Protocol &protocol) {
@@ -104,8 +133,13 @@ signed main() {
   SketchTab original;
   original.geometry = std::make_unique<GeometryVisual>(MENU_BAR_X);
   original.title = "Diagram 1";
+  original.id = 0;
   tabs.push_back(std::move(original));
   int active_tab = 0;
+  int next_tab_id = 1;
+  int dragged_tab = -1;
+  int rename_title_tab_id = -1;
+  std::string rename_title_text;
   bool protocol_preview = false;
   int protocol_scroll = 0;
   int rename_tab = -1;
@@ -129,7 +163,27 @@ signed main() {
         for (SketchTab &tab : tabs) tab.geometry->resize_camera(width, height);
         tab_event = true;
       }
-      if (!triangle_center_vertices.empty()) {
+      if (rename_title_tab_id != -1) {
+        tab_event = true;
+        if (event.type == sf::Event::TextEntered && event.text.unicode >= 32 &&
+            event.text.unicode < 127 && rename_title_text.size() < 40) {
+          rename_title_text.push_back(static_cast<char>(event.text.unicode));
+        }
+        if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::BackSpace &&
+            !rename_title_text.empty()) {
+          rename_title_text.pop_back();
+        }
+        if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Enter &&
+            !rename_title_text.empty()) {
+          const int index = find_tab_by_id(tabs, rename_title_tab_id);
+          if (index != -1) tabs[index].title = rename_title_text;
+          rename_title_tab_id = -1;
+          rename_title_text.clear();
+        } else if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
+          rename_title_tab_id = -1;
+          rename_title_text.clear();
+        }
+      } else if (!triangle_center_vertices.empty()) {
         tab_event = true;
         if (event.type == sf::Event::TextEntered && event.text.unicode >= '0' && event.text.unicode <= '9' &&
             triangle_center_text.size() < 2) {
@@ -196,10 +250,53 @@ signed main() {
         }
       }
       const float protocol_button_x = window.getSize().x - 44.f;
+      const float new_tab_button_x = window.getSize().x - 84.f;
+      const float duplicate_tab_button_x = window.getSize().x - 124.f;
       if (!tab_event && event.type == sf::Event::MouseButtonPressed &&
-          event.mouseButton.button == sf::Mouse::Left &&
-          event.mouseButton.x >= protocol_button_x && event.mouseButton.x <= protocol_button_x + 32 &&
-          event.mouseButton.y >= 2 && event.mouseButton.y <= 34) {
+          event.mouseButton.button == sf::Mouse::Left && event.mouseButton.y >= 2 &&
+          event.mouseButton.y <= 34 && event.mouseButton.x >= new_tab_button_x &&
+          event.mouseButton.x <= new_tab_button_x + 32) {
+        SketchTab tab;
+        tab.geometry = std::make_unique<GeometryVisual>(MENU_BAR_X);
+        tab.title = "Diagram " + std::to_string(next_tab_id + 1);
+        tab.id = next_tab_id++;
+        tabs.push_back(std::move(tab));
+        active_tab = tabs.size() - 1;
+        protocol_scroll = 0;
+        toolbar.geomv = tabs[active_tab].geometry.get();
+        tab_event = true;
+      } else if (!tab_event && event.type == sf::Event::MouseButtonPressed &&
+                 event.mouseButton.button == sf::Mouse::Left && event.mouseButton.y >= 2 &&
+                 event.mouseButton.y <= 34 && event.mouseButton.x >= duplicate_tab_button_x &&
+                 event.mouseButton.x <= duplicate_tab_button_x + 32) {
+        SketchTab duplicate;
+        duplicate.geometry = std::make_unique<GeometryVisual>(MENU_BAR_X);
+        duplicate.title = tabs[active_tab].title + " Copy";
+        duplicate.id = next_tab_id++;
+        if (tabs[active_tab].is_linked()) {
+          duplicate.source_id = tabs[active_tab].source_id;
+          duplicate.inversion_circle = tabs[active_tab].inversion_circle;
+          const int source_index = find_tab_by_id(tabs, duplicate.source_id);
+          if (source_index != -1) {
+            GeometryVisual &source = *tabs[source_index].geometry;
+            duplicate.source_signature = source.protocol.get_string_format();
+            duplicate.geometry->build_inversion(
+              source, find_inversion_circle(source.protocol, duplicate.inversion_circle)
+            );
+          }
+        } else {
+          duplicate.geometry->protocol = tabs[active_tab].geometry->protocol;
+          duplicate.geometry->rebuild();
+        }
+        tabs.push_back(std::move(duplicate));
+        active_tab = tabs.size() - 1;
+        protocol_scroll = 0;
+        toolbar.geomv = tabs[active_tab].geometry.get();
+        tab_event = true;
+      } else if (!tab_event && event.type == sf::Event::MouseButtonPressed &&
+                 event.mouseButton.button == sf::Mouse::Left &&
+                 event.mouseButton.x >= protocol_button_x && event.mouseButton.x <= protocol_button_x + 32 &&
+                 event.mouseButton.y >= 2 && event.mouseButton.y <= 34) {
         protocol_preview = !protocol_preview;
         protocol_scroll = 0;
         tab_event = true;
@@ -209,10 +306,58 @@ signed main() {
                  event.mouseButton.x >= MENU_BAR_X) {
         const int selected_tab = (event.mouseButton.x - MENU_BAR_X) / TAB_WIDTH;
         if (selected_tab >= 0 && selected_tab < tabs.size()) {
-          active_tab = selected_tab;
-          protocol_scroll = 0;
+          const float tab_x = MENU_BAR_X + selected_tab * TAB_WIDTH;
+          const float local_x = event.mouseButton.x - tab_x;
+          if (local_x >= TAB_WIDTH - 22) {
+            const int old_active_id = tabs[active_tab].id;
+            close_tab_tree(tabs, tabs[selected_tab].id);
+            if (tabs.empty()) {
+              SketchTab tab;
+              tab.geometry = std::make_unique<GeometryVisual>(MENU_BAR_X);
+              tab.title = "Diagram " + std::to_string(next_tab_id + 1);
+              tab.id = next_tab_id++;
+              tabs.push_back(std::move(tab));
+            }
+            const int preserved_active = find_tab_by_id(tabs, old_active_id);
+            active_tab = preserved_active == -1
+              ? std::min(selected_tab, static_cast<int>(tabs.size()) - 1)
+              : preserved_active;
+            dragged_tab = -1;
+            protocol_scroll = 0;
+            toolbar.geomv = tabs[active_tab].geometry.get();
+          } else if (local_x >= TAB_WIDTH - 44) {
+            active_tab = selected_tab;
+            rename_title_tab_id = tabs[selected_tab].id;
+            rename_title_text = tabs[selected_tab].title;
+            protocol_scroll = 0;
+            toolbar.geomv = tabs[active_tab].geometry.get();
+          } else {
+            active_tab = selected_tab;
+            dragged_tab = selected_tab;
+            protocol_scroll = 0;
+            toolbar.geomv = tabs[active_tab].geometry.get();
+          }
+        }
+        tab_event = true;
+      }
+      if (!tab_event && dragged_tab != -1 && event.type == sf::Event::MouseMoved) {
+        const int target = std::clamp(
+          static_cast<int>((event.mouseMove.x - MENU_BAR_X) / TAB_WIDTH),
+          0, static_cast<int>(tabs.size()) - 1
+        );
+        if (target != dragged_tab) {
+          SketchTab moved = std::move(tabs[dragged_tab]);
+          tabs.erase(tabs.begin() + dragged_tab);
+          tabs.insert(tabs.begin() + target, std::move(moved));
+          dragged_tab = target;
+          active_tab = target;
           toolbar.geomv = tabs[active_tab].geometry.get();
         }
+        tab_event = true;
+      }
+      if (!tab_event && dragged_tab != -1 && event.type == sf::Event::MouseButtonReleased &&
+          event.mouseButton.button == sf::Mouse::Left) {
+        dragged_tab = -1;
         tab_event = true;
       }
       if (!tab_event && protocol_preview &&
@@ -275,8 +420,9 @@ signed main() {
           GeometryVisual &source = *tabs[active_tab].geometry;
           SketchTab inversion;
           inversion.geometry = std::make_unique<GeometryVisual>(MENU_BAR_X);
-          inversion.title = "Inversion " + std::to_string(tabs.size());
-          inversion.source_tab = active_tab;
+          inversion.title = "Inversion " + std::to_string(next_tab_id + 1);
+          inversion.id = next_tab_id++;
+          inversion.source_id = tabs[active_tab].id;
           inversion.inversion_circle = source.protocol.protocol["Circle"][request];
           inversion.source_signature = source.protocol.get_string_format();
           inversion.geometry->build_inversion(source, request);
@@ -325,11 +471,24 @@ signed main() {
       window.draw(tab);
       sf::Text title;
       title.setFont(font);
-      title.setString(tabs[i].title);
+      const std::string displayed_title = tabs[i].title.size() > 13
+        ? tabs[i].title.substr(0, 11) + "..." : tabs[i].title;
+      title.setString(displayed_title);
       title.setCharacterSize(14);
       title.setFillColor(sf::Color::Black);
-      title.setPosition(MENU_BAR_X + i * TAB_WIDTH + 10, 9);
+      const float tab_x = MENU_BAR_X + i * TAB_WIDTH;
+      title.setPosition(tab_x + 10, 9);
       window.draw(title);
+      sf::VertexArray rename_icon(sf::Lines, 2);
+      rename_icon[0] = sf::Vertex(sf::Vector2f(tab_x + TAB_WIDTH - 39, 24), sf::Color::Black);
+      rename_icon[1] = sf::Vertex(sf::Vector2f(tab_x + TAB_WIDTH - 27, 12), sf::Color::Black);
+      window.draw(rename_icon);
+      sf::VertexArray close_icon(sf::Lines, 4);
+      close_icon[0] = sf::Vertex(sf::Vector2f(tab_x + TAB_WIDTH - 17, 12), sf::Color::Black);
+      close_icon[1] = sf::Vertex(sf::Vector2f(tab_x + TAB_WIDTH - 7, 24), sf::Color::Black);
+      close_icon[2] = sf::Vertex(sf::Vector2f(tab_x + TAB_WIDTH - 7, 12), sf::Color::Black);
+      close_icon[3] = sf::Vertex(sf::Vector2f(tab_x + TAB_WIDTH - 17, 24), sf::Color::Black);
+      window.draw(close_icon);
     }
 
     if (protocol_preview) {
@@ -342,7 +501,9 @@ signed main() {
       panel.setOutlineThickness(1);
       window.draw(panel);
 
-      const int protocol_tab = tabs[active_tab].is_linked() ? tabs[active_tab].source_tab : active_tab;
+      const int linked_source = tabs[active_tab].is_linked()
+        ? find_tab_by_id(tabs, tabs[active_tab].source_id) : -1;
+      const int protocol_tab = linked_source == -1 ? active_tab : linked_source;
       sf::Text heading;
       heading.setFont(font);
       heading.setString("Protocol - " + tabs[protocol_tab].title);
@@ -367,6 +528,40 @@ signed main() {
       window.draw(protocol_text);
     }
 
+    const float new_tab_button_x = window.getSize().x - 84.f;
+    sf::RectangleShape new_tab_button(sf::Vector2f(32, 32));
+    new_tab_button.setPosition(new_tab_button_x, 2);
+    new_tab_button.setFillColor(sf::Color::White);
+    new_tab_button.setOutlineColor(sf::Color::Black);
+    new_tab_button.setOutlineThickness(1);
+    window.draw(new_tab_button);
+    sf::VertexArray plus(sf::Lines, 4);
+    plus[0] = sf::Vertex(sf::Vector2f(new_tab_button_x + 8, 18), sf::Color::Black);
+    plus[1] = sf::Vertex(sf::Vector2f(new_tab_button_x + 24, 18), sf::Color::Black);
+    plus[2] = sf::Vertex(sf::Vector2f(new_tab_button_x + 16, 10), sf::Color::Black);
+    plus[3] = sf::Vertex(sf::Vector2f(new_tab_button_x + 16, 26), sf::Color::Black);
+    window.draw(plus);
+
+    const float duplicate_tab_button_x = window.getSize().x - 124.f;
+    sf::RectangleShape duplicate_back(sf::Vector2f(14, 14));
+    duplicate_back.setPosition(duplicate_tab_button_x + 7, 9);
+    duplicate_back.setFillColor(sf::Color::White);
+    duplicate_back.setOutlineColor(sf::Color::Black);
+    duplicate_back.setOutlineThickness(1);
+    sf::RectangleShape duplicate_front(sf::Vector2f(14, 14));
+    duplicate_front.setPosition(duplicate_tab_button_x + 12, 14);
+    duplicate_front.setFillColor(sf::Color::White);
+    duplicate_front.setOutlineColor(sf::Color::Black);
+    duplicate_front.setOutlineThickness(1);
+    sf::RectangleShape duplicate_button(sf::Vector2f(32, 32));
+    duplicate_button.setPosition(duplicate_tab_button_x, 2);
+    duplicate_button.setFillColor(sf::Color::White);
+    duplicate_button.setOutlineColor(sf::Color::Black);
+    duplicate_button.setOutlineThickness(1);
+    window.draw(duplicate_button);
+    window.draw(duplicate_back);
+    window.draw(duplicate_front);
+
     const float protocol_button_x = window.getSize().x - 44.f;
     sf::RectangleShape protocol_button(sf::Vector2f(32, 32));
     protocol_button.setPosition(protocol_button_x, 2);
@@ -381,7 +576,30 @@ signed main() {
     }
     window.draw(strips);
 
-    if (!triangle_center_vertices.empty()) {
+    if (rename_title_tab_id != -1) {
+      const float prompt_x = (window.getSize().x - 420.f) / 2;
+      const float prompt_y = (window.getSize().y - 120.f) / 2;
+      sf::RectangleShape prompt(sf::Vector2f(420, 120));
+      prompt.setPosition(prompt_x, prompt_y);
+      prompt.setFillColor(sf::Color(245, 245, 245));
+      prompt.setOutlineColor(sf::Color::Black);
+      prompt.setOutlineThickness(2);
+      window.draw(prompt);
+      sf::Text prompt_title;
+      prompt_title.setFont(font);
+      prompt_title.setString("Rename tab - Enter to save, Esc to cancel");
+      prompt_title.setCharacterSize(15);
+      prompt_title.setFillColor(sf::Color::Black);
+      prompt_title.setPosition(prompt_x + 16, prompt_y + 14);
+      window.draw(prompt_title);
+      sf::Text prompt_value;
+      prompt_value.setFont(font);
+      prompt_value.setString(rename_title_text + "|");
+      prompt_value.setCharacterSize(22);
+      prompt_value.setFillColor(sf::Color::Black);
+      prompt_value.setPosition(prompt_x + 16, prompt_y + 58);
+      window.draw(prompt_value);
+    } else if (!triangle_center_vertices.empty()) {
       const float prompt_x = (window.getSize().x - 420.f) / 2;
       const float prompt_y = (window.getSize().y - 120.f) / 2;
       sf::RectangleShape prompt(sf::Vector2f(420, 120));
