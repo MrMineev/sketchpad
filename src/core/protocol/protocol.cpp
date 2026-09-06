@@ -160,6 +160,26 @@ void Protocol::new_incenter(int pos, int x, int y, int z) {
   this->protocol["order"].push_back({"Point", pos});
 }
 
+void Protocol::new_circumcenter(int pos, int x, int y, int z) {
+  this->protocol["Point"][pos] = {
+    {"func", "newCircumcenter"},
+    {"type", "Point"},
+    {"args", {x, y, z}}
+  };
+  this->initialize_point_metadata(pos);
+  this->protocol["order"].push_back({"Point", pos});
+}
+
+void Protocol::new_triangle_center(int pos, int x, int y, int z, int number) {
+  this->protocol["Point"][pos] = {
+    {"func", "newTriangleCenter"},
+    {"type", "Point"},
+    {"args", {x, y, z, number}}
+  };
+  this->initialize_point_metadata(pos);
+  this->protocol["order"].push_back({"Point", pos});
+}
+
 void Protocol::new_excenter(int pos, int x, int y, int z) {
   this->protocol["Point"][pos] = {
     {"func", "new_excenter"},
@@ -316,8 +336,10 @@ void Protocol::delete_obj(std::string start_cat, int pos) {
     if (func == "newReflectPointOverLine" || func == "perpNormal" || func == "parallel") {
       return arg == 0 ? "Point" : "Line";
     }
+    if (func == "newTriangleCenter") return arg < 3 ? "Point" : "";
     if (func == "newLine" || func == "newCircle" || func == "midpoint" ||
-        func == "circumcircle" || func == "new_incenter" || func == "new_excenter" ||
+        func == "circumcircle" || func == "new_incenter" || func == "newCircumcenter" ||
+        func == "new_excenter" ||
         func == "newIsogonalConjugate" || func == "newConic" || func == "newCubic" ||
         func == "newAngleBisector") {
       return "Point";

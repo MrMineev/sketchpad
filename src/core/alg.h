@@ -547,6 +547,80 @@ static Cubic fitCubicThrough9(
   }
   
 
+  static bool circumcenter(Point p1, Point p2, Point p3, Point &result) {
+    const ld denominator = 2 * (p1.x * (p2.y - p3.y) +
+                                p2.x * (p3.y - p1.y) +
+                                p3.x * (p1.y - p2.y));
+    if (abs(denominator) < EPS) return false;
+    const ld n1 = p1.x * p1.x + p1.y * p1.y;
+    const ld n2 = p2.x * p2.x + p2.y * p2.y;
+    const ld n3 = p3.x * p3.x + p3.y * p3.y;
+    result = Point(
+      (n1 * (p2.y - p3.y) + n2 * (p3.y - p1.y) + n3 * (p1.y - p2.y)) / denominator,
+      (n1 * (p3.x - p2.x) + n2 * (p1.x - p3.x) + n3 * (p2.x - p1.x)) / denominator
+    );
+    return isfinite(result.x) && isfinite(result.y);
+  }
+
+  static bool triangle_center(int number, Point p1, Point p2, Point p3, Point &result) {
+    if (number < 1 || number > 10) return false;
+    const ld a = CoreGeometryTools::dist_points(p2, p3);
+    const ld b = CoreGeometryTools::dist_points(p3, p1);
+    const ld c = CoreGeometryTools::dist_points(p1, p2);
+    const ld semiperimeter = (a + b + c) / 2;
+    const ld twice_area = abs((p2.x - p1.x) * (p3.y - p1.y) -
+                              (p2.y - p1.y) * (p3.x - p1.x));
+    if (twice_area < EPS) return false;
+
+    auto barycentric = [&](ld x, ld y, ld z) {
+      const ld sum = x + y + z;
+      if (abs(sum) < EPS) return false;
+      result = Point(
+        (x * p1.x + y * p2.x + z * p3.x) / sum,
+        (x * p1.y + y * p2.y + z * p3.y) / sum
+      );
+      return isfinite(result.x) && isfinite(result.y);
+    };
+
+    if (number == 1) return barycentric(a, b, c);
+    if (number == 2) return barycentric(1, 1, 1);
+
+    Point circum;
+    if (!CoreGeometryTools::circumcenter(p1, p2, p3, circum)) return false;
+    if (number == 3) {
+      result = circum;
+      return true;
+    }
+    const Point orthocenter(
+      p1.x + p2.x + p3.x - 2 * circum.x,
+      p1.y + p2.y + p3.y - 2 * circum.y
+    );
+    if (number == 4) {
+      result = orthocenter;
+      return true;
+    }
+    if (number == 5) {
+      result = CoreGeometryTools::midpoint(circum, orthocenter);
+      return true;
+    }
+    if (number == 6) return barycentric(a * a, b * b, c * c);
+    if (number == 7) {
+      if (semiperimeter - a < EPS || semiperimeter - b < EPS || semiperimeter - c < EPS) return false;
+      return barycentric(
+        1 / (semiperimeter - a), 1 / (semiperimeter - b), 1 / (semiperimeter - c)
+      );
+    }
+    if (number == 8) {
+      return barycentric(semiperimeter - a, semiperimeter - b, semiperimeter - c);
+    }
+    if (number == 9) {
+      return barycentric(
+        a * (semiperimeter - a), b * (semiperimeter - b), c * (semiperimeter - c)
+      );
+    }
+    return barycentric(b + c, c + a, a + b);
+  }
+
   static Point incenter(Point p1, Point p2, Point p3) {
     ld a = AlgGeom::CoreGeometryTools::dist_points(p2, p3);
     ld b = AlgGeom::CoreGeometryTools::dist_points(p1, p3);

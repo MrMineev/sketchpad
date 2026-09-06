@@ -20,8 +20,14 @@ class GeometryVisual {
   std::vector<GCircle> live_stack_circles;
 
   void delete_object(std::string type, int index);
+  void initialize_camera(const sf::RenderWindow &window);
 
   int X_MENU_BORDER;
+  sf::View camera_view;
+  bool camera_initialized = false;
+  bool isPanning = false;
+  sf::Vector2i pan_last_pixel;
+  float camera_zoom = 1;
 
  public:
   std::vector<GPoint> points;
@@ -41,6 +47,7 @@ class GeometryVisual {
   int selected_circle = -1;
   int inversion_circle_request = -1;
   int rename_point_request = -1;
+  std::vector<int> triangle_center_request;
 
   Protocol protocol;
 
@@ -56,6 +63,7 @@ class GeometryVisual {
   std::string new_circle(int pos, int x, int y);
 
   std::pair<std::pair<int, std::pair<int, int>>, GPoint> point_searcher(GPoint p);
+  bool handleCameraEvent(const sf::Event& event, sf::RenderWindow& window);
   void handleEvent(const sf::Event& event, sf::RenderWindow& window, gui::Menu& menu);
   void draw(sf::RenderWindow& window, const sf::Font *font = nullptr);
   void rebuild();
@@ -65,6 +73,7 @@ class GeometryVisual {
   void hide_geo_genie();
   int take_inversion_request();
   int take_rename_point_request();
+  std::vector<int> take_triangle_center_request();
   void show_all();
   void build_inversion(const GeometryVisual &source, int inversion_circle);
 

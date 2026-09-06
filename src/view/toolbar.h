@@ -5,6 +5,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <algorithm>
 
 // #include ".h"
 #include "../../gui_tools/src/Gui/Gui.hpp"
@@ -23,6 +24,9 @@ struct ToolView {
   gui::Menu* menu;
   GeometryVisual* geomv;
   sf::RectangleShape rectangle;
+  int toolbar_width;
+  int toolbar_height;
+  float scroll_offset = 0;
 
   vector<string> tools_names = {
     "Mouse",
@@ -46,6 +50,8 @@ struct ToolView {
     "Reflect Line Over Line",
     "Isogonal Conjugate",
     "Reflect Point Over Line",
+    "Circumcenter",
+    "Triangle Center",
     "Hide Object",
     "Hide Label",
     "Rename Point",
@@ -54,9 +60,53 @@ struct ToolView {
     "Open",
   };
 
+  float max_scroll() const {
+    return std::max(0.f, menu->getSize().y + 20 - toolbar_height);
+  }
+
+  void update_menu_position() {
+    scroll_offset = std::clamp(scroll_offset, 0.f, max_scroll());
+    menu->setPosition(10, 10 - scroll_offset);
+  }
+
+  bool handleEvent(const sf::Event &event) {
+    float delta = 0;
+    int mouse_x = toolbar_width + 1;
+    if (event.type == sf::Event::MouseWheelScrolled) {
+      delta = event.mouseWheelScroll.delta;
+      mouse_x = event.mouseWheelScroll.x;
+    } else if (event.type == sf::Event::MouseWheelMoved) {
+      delta = event.mouseWheel.delta;
+      mouse_x = event.mouseWheel.x;
+    } else {
+      return false;
+    }
+    if (mouse_x < 0 || mouse_x > toolbar_width) return false;
+    scroll_offset -= delta * 45;
+    update_menu_position();
+    return true;
+  }
+
   void draw_tools(sf::RenderWindow &window) {
+    const sf::View previous_view = window.getView();
+    sf::View toolbar_view(sf::FloatRect(0, 0, toolbar_width, toolbar_height));
+    toolbar_view.setViewport(sf::FloatRect(
+      0, 0, static_cast<float>(toolbar_width) / window.getSize().x, 1
+    ));
+    window.setView(toolbar_view);
     window.draw(rectangle);
     window.draw(*menu);
+    const float maximum = max_scroll();
+    if (maximum > 0) {
+      const float content_height = menu->getSize().y + 20;
+      const float thumb_height = std::max(30.f, toolbar_height * toolbar_height / content_height);
+      const float thumb_y = scroll_offset / maximum * (toolbar_height - thumb_height);
+      sf::RectangleShape scrollbar(sf::Vector2f(5, thumb_height));
+      scrollbar.setPosition(toolbar_width - 7, thumb_y);
+      scrollbar.setFillColor(sf::Color(130, 130, 130));
+      window.draw(scrollbar);
+    }
+    window.setView(previous_view);
   }
 
   void setup() {
@@ -93,11 +143,12 @@ struct ToolView {
   ToolView(gui::Menu* _menu, GeometryVisual* _geomv, int width, int height, int menu_bar_x) {
     menu = _menu;
     geomv = _geomv;
+    toolbar_width = menu_bar_x;
+    toolbar_height = height;
     setup();
+    update_menu_position();
 
-    const int w = menu_bar_x;
-    const int h = height;
-    rectangle = sf::RectangleShape(sf::Vector2f((float)w, (float)h));
+    rectangle = sf::RectangleShape(sf::Vector2f((float)toolbar_width, (float)toolbar_height));
     rectangle.setPosition(0, 0);
     rectangle.setFillColor(sf::Color::White);
   }

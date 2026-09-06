@@ -9,6 +9,7 @@
 #include "src/view/toolbar.h"
 #include "gui_tools/src/Gui/Gui.hpp"
 #include "src/core/geometry.h"
+#include "src/core/alg.h"
 #include "json_manager/json/single_include/nlohmann/json.hpp"
 
 using namespace std;
@@ -110,13 +111,62 @@ signed main() {
   int rename_tab = -1;
   int rename_point = -1;
   std::string rename_text;
+  int triangle_center_tab = -1;
+  std::vector<int> triangle_center_vertices;
+  std::string triangle_center_text;
+  bool triangle_center_error = false;
   ToolView toolbar(&menu, tabs[0].geometry.get(), SCREEN_X, SCREEN_Y, MENU_BAR_X);
 
   while (window.isOpen()) {
     sf::Event event;
     while (window.pollEvent(event)) {
       bool tab_event = false;
-      if (rename_point != -1) {
+      if (!triangle_center_vertices.empty()) {
+        tab_event = true;
+        if (event.type == sf::Event::TextEntered && event.text.unicode >= '0' && event.text.unicode <= '9' &&
+            triangle_center_text.size() < 2) {
+          triangle_center_text.push_back(static_cast<char>(event.text.unicode));
+          triangle_center_error = false;
+        }
+        if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::BackSpace &&
+            !triangle_center_text.empty()) {
+          triangle_center_text.pop_back();
+          triangle_center_error = false;
+        }
+        if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Enter) {
+          const int number = triangle_center_text.empty() ? 0 : std::stoi(triangle_center_text);
+          GeometryVisual &geometry = *tabs[triangle_center_tab].geometry;
+          AlgGeom::Point center;
+          const bool valid = number >= 1 && number <= 10 &&
+            AlgGeom::CoreGeometryTools::triangle_center(
+              number,
+              AlgGeom::Point(geometry.points[triangle_center_vertices[0]].x_pos,
+                             geometry.points[triangle_center_vertices[0]].y_pos),
+              AlgGeom::Point(geometry.points[triangle_center_vertices[1]].x_pos,
+                             geometry.points[triangle_center_vertices[1]].y_pos),
+              AlgGeom::Point(geometry.points[triangle_center_vertices[2]].x_pos,
+                             geometry.points[triangle_center_vertices[2]].y_pos), center
+            );
+          if (valid) {
+            geometry.protocol.new_triangle_center(
+              geometry.points.size(), triangle_center_vertices[0], triangle_center_vertices[1],
+              triangle_center_vertices[2], number
+            );
+            geometry.rebuild();
+            triangle_center_tab = -1;
+            triangle_center_vertices.clear();
+            triangle_center_text.clear();
+            triangle_center_error = false;
+          } else {
+            triangle_center_error = true;
+          }
+        } else if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
+          triangle_center_tab = -1;
+          triangle_center_vertices.clear();
+          triangle_center_text.clear();
+          triangle_center_error = false;
+        }
+      } else if (rename_point != -1) {
         tab_event = true;
         if (event.type == sf::Event::TextEntered && event.text.unicode >= 32 && event.text.unicode < 127) {
           rename_text.push_back(static_cast<char>(event.text.unicode));
@@ -172,6 +222,12 @@ signed main() {
           event.mouseButton.x >= window.getSize().x - 520 && event.mouseButton.y >= TAB_HEIGHT) {
         tab_event = true;
       }
+      if (!tab_event && toolbar.handleEvent(event)) {
+        tab_event = true;
+      }
+      if (!tab_event && tabs[active_tab].geometry->handleCameraEvent(event, window)) {
+        tab_event = true;
+      }
 
       if (!tab_event && !tabs[active_tab].is_linked()) {
         menu.onEvent(event);
@@ -185,6 +241,13 @@ signed main() {
             rename_text = tabs[active_tab].geometry->protocol.protocol["Point"][rename_request]
               .value("label", "");
           }
+        }
+        const std::vector<int> center_request = tabs[active_tab].geometry->take_triangle_center_request();
+        if (center_request.size() == 3) {
+          triangle_center_tab = active_tab;
+          triangle_center_vertices = center_request;
+          triangle_center_text.clear();
+          triangle_center_error = false;
         }
         const int request = tabs[active_tab].geometry->take_inversion_request();
         if (request >= 0 && request < tabs[active_tab].geometry->circles.size()) {
@@ -297,7 +360,32 @@ signed main() {
     }
     window.draw(strips);
 
-    if (rename_point != -1) {
+    if (!triangle_center_vertices.empty()) {
+      const float prompt_x = (window.getSize().x - 420.f) / 2;
+      const float prompt_y = (window.getSize().y - 120.f) / 2;
+      sf::RectangleShape prompt(sf::Vector2f(420, 120));
+      prompt.setPosition(prompt_x, prompt_y);
+      prompt.setFillColor(sf::Color(245, 245, 245));
+      prompt.setOutlineColor(triangle_center_error ? sf::Color::Red : sf::Color::Black);
+      prompt.setOutlineThickness(2);
+      window.draw(prompt);
+      sf::Text prompt_title;
+      prompt_title.setFont(font);
+      prompt_title.setString(triangle_center_error
+        ? "Enter a valid center X(1) through X(10)"
+        : "Triangle center number X(n) - Enter to create");
+      prompt_title.setCharacterSize(15);
+      prompt_title.setFillColor(sf::Color::Black);
+      prompt_title.setPosition(prompt_x + 16, prompt_y + 14);
+      window.draw(prompt_title);
+      sf::Text prompt_value;
+      prompt_value.setFont(font);
+      prompt_value.setString("X(" + triangle_center_text + "|)");
+      prompt_value.setCharacterSize(22);
+      prompt_value.setFillColor(sf::Color::Black);
+      prompt_value.setPosition(prompt_x + 16, prompt_y + 58);
+      window.draw(prompt_value);
+    } else if (rename_point != -1) {
       const float prompt_x = (window.getSize().x - 420.f) / 2;
       const float prompt_y = (window.getSize().y - 120.f) / 2;
       sf::RectangleShape prompt(sf::Vector2f(420, 120));

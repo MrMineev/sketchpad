@@ -7,6 +7,8 @@
 #include "../geo_genie/property.h"
 
 #include <string>
+#include <algorithm>
+#include <cmath>
 
 typedef long double ld;
 
@@ -181,6 +183,25 @@ void GeometryVisual::rebuild() {
         AlgGeom::Point(this->points[p3].x_pos, this->points[p3].y_pos)
       );
       // this->points[p] = GPoint(new_loc.x, new_loc.y);
+      this->points.push_back(GPoint(new_loc.x, new_loc.y));
+    } else if (command_type == "newCircumcenter" || command_type == "newTriangleCenter") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
+      int p3 = information_command["args"][2];
+      AlgGeom::Point new_loc;
+      const bool valid = command_type == "newCircumcenter"
+        ? AlgGeom::CoreGeometryTools::circumcenter(
+            AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
+            AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos),
+            AlgGeom::Point(this->points[p3].x_pos, this->points[p3].y_pos), new_loc
+          )
+        : AlgGeom::CoreGeometryTools::triangle_center(
+            information_command["args"][3],
+            AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
+            AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos),
+            AlgGeom::Point(this->points[p3].x_pos, this->points[p3].y_pos), new_loc
+          );
+      if (!valid) new_loc = AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos);
       this->points.push_back(GPoint(new_loc.x, new_loc.y));
     } else if (command_type == "new_excenter") {
       int p1 = information_command["args"][0];
@@ -363,6 +384,12 @@ int GeometryVisual::take_rename_point_request() {
   return request;
 }
 
+std::vector<int> GeometryVisual::take_triangle_center_request() {
+  std::vector<int> request = this->triangle_center_request;
+  this->triangle_center_request.clear();
+  return request;
+}
+
 void GeometryVisual::show_all() {
   this->protocol.show_all();
   this->current_tool = 0;
@@ -473,13 +500,85 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
   }
 }
 
+void GeometryVisual::initialize_camera(const sf::RenderWindow &window) {
+  if (this->camera_initialized) return;
+  this->camera_view = window.getDefaultView();
+  this->camera_initialized = true;
+}
+
+bool GeometryVisual::handleCameraEvent(const sf::Event& event, sf::RenderWindow& window) {
+  this->initialize_camera(window);
+
+  if (event.type == sf::Event::MouseWheelScrolled) {
+    const sf::Vector2i pixel(event.mouseWheelScroll.x, event.mouseWheelScroll.y);
+    if (pixel.x <= this->X_MENU_BORDER || pixel.y <= 36) return false;
+    const sf::Vector2f before = window.mapPixelToCoords(pixel, this->camera_view);
+    const float requested_zoom = this->camera_zoom * std::pow(0.9f, event.mouseWheelScroll.delta);
+    const float new_zoom = std::clamp(requested_zoom, 0.1f, 10.f);
+    this->camera_view.zoom(new_zoom / this->camera_zoom);
+    this->camera_zoom = new_zoom;
+    const sf::Vector2f after = window.mapPixelToCoords(pixel, this->camera_view);
+    this->camera_view.move(before - after);
+    return true;
+  }
+
+  if (event.type == sf::Event::MouseWheelMoved) {
+    const sf::Vector2i pixel(event.mouseWheel.x, event.mouseWheel.y);
+    if (pixel.x <= this->X_MENU_BORDER || pixel.y <= 36) return false;
+    const sf::Vector2f before = window.mapPixelToCoords(pixel, this->camera_view);
+    const float requested_zoom = this->camera_zoom * std::pow(0.9f, event.mouseWheel.delta);
+    const float new_zoom = std::clamp(requested_zoom, 0.1f, 10.f);
+    this->camera_view.zoom(new_zoom / this->camera_zoom);
+    this->camera_zoom = new_zoom;
+    const sf::Vector2f after = window.mapPixelToCoords(pixel, this->camera_view);
+    this->camera_view.move(before - after);
+    return true;
+  }
+
+  if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left &&
+      this->current_tool == 0 && event.mouseButton.x > this->X_MENU_BORDER && event.mouseButton.y > 36) {
+    if (this->protocol.has_searcher_objects() && event.mouseButton.x >= window.getSize().x - 44 &&
+        event.mouseButton.y >= 48 && event.mouseButton.y <= 80) return false;
+    const sf::Vector2f world = window.mapPixelToCoords(
+      sf::Vector2i(event.mouseButton.x, event.mouseButton.y), this->camera_view
+    );
+    const auto result = this->point_searcher(GPoint(world.x, world.y));
+    const auto indexes = result.first;
+    if (indexes.first == -1 && indexes.second.first == -1 && indexes.second.second == -1) {
+      this->isPanning = true;
+      this->pan_last_pixel = sf::Vector2i(event.mouseButton.x, event.mouseButton.y);
+      this->selected_point = -1;
+      this->selected_line = -1;
+      this->selected_circle = -1;
+      return true;
+    }
+  }
+
+  if (event.type == sf::Event::MouseMoved && this->isPanning) {
+    const sf::Vector2i pixel(event.mouseMove.x, event.mouseMove.y);
+    const sf::Vector2f previous = window.mapPixelToCoords(this->pan_last_pixel, this->camera_view);
+    const sf::Vector2f current = window.mapPixelToCoords(pixel, this->camera_view);
+    this->camera_view.move(previous - current);
+    this->pan_last_pixel = pixel;
+    return true;
+  }
+
+  if (event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Left &&
+      this->isPanning) {
+    this->isPanning = false;
+    return true;
+  }
+  return false;
+}
+
 pair<pair<int, pair<int, int>>, GPoint> GeometryVisual::point_searcher(GPoint p) {
+  const ld selection_epsilon = EPS * this->camera_zoom;
   for (int i = 0; i < this->points.size(); i++) {
     if (!this->points[i].visible) continue;
     if (AlgGeom::CoreGeometryTools::dist_points(
       AlgGeom::Point(p.x_pos, p.y_pos),
       AlgGeom::Point(this->points[i].x_pos, this->points[i].y_pos)
-    ) <= EPS) {
+    ) <= selection_epsilon) {
       return make_pair(make_pair(i, make_pair(-1, -1)), this->points[i]);
     }
   }
@@ -499,7 +598,7 @@ pair<pair<int, pair<int, int>>, GPoint> GeometryVisual::point_searcher(GPoint p)
         AlgGeom::Point(this->lines[i].x1, this->lines[i].y1),
         AlgGeom::Point(this->lines[i].x2, this->lines[i].y2)
       )
-    ) <= EPS) {
+    ) <= selection_epsilon) {
       AlgGeom::Point new_loc = AlgGeom::CoreGeometryTools::project_point_to_line(
         AlgGeom::Point(p.x_pos, p.y_pos),
         AlgGeom::Line(
@@ -518,7 +617,7 @@ pair<pair<int, pair<int, int>>, GPoint> GeometryVisual::point_searcher(GPoint p)
         this->circles[i].x_pos, this->circles[i].y_pos
       )
     ));
-    if (dist <= EPS) {
+    if (dist <= selection_epsilon) {
       AlgGeom::Point new_loc = AlgGeom::CoreGeometryTools::project_point_to_circle(
         AlgGeom::Point(p.x_pos, p.y_pos),
         AlgGeom::Circle(
@@ -550,7 +649,11 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       return;
     }
 
-    GPoint _p(event.mouseButton.x, event.mouseButton.y);
+    this->initialize_camera(window);
+    const sf::Vector2f world = window.mapPixelToCoords(
+      sf::Vector2i(event.mouseButton.x, event.mouseButton.y), this->camera_view
+    );
+    GPoint _p(world.x, world.y);
     auto [_indexes, p] = this->point_searcher(_p);
     auto [index_search, _object_search] = _indexes;
     auto [line_search, circle_search] = _object_search;
@@ -764,7 +867,17 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
         }
       }
     }
-    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 21) {
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 21 && index_search != -1 &&
+        this->live_stack.size() < 3) {
+      p.index = index_search;
+      this->live_stack.push_back(p);
+    }
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 22 && index_search != -1 &&
+        this->live_stack.size() < 3) {
+      p.index = index_search;
+      this->live_stack.push_back(p);
+    }
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 23) {
       if (index_search != -1) {
         this->protocol.set_visibility("Point", index_search, false);
       } else if (line_search != -1) {
@@ -777,11 +890,11 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       this->selected_circle = -1;
       this->rebuild();
     }
-    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 22 && index_search != -1) {
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 24 && index_search != -1) {
       this->protocol.set_point_label_visibility(index_search, false);
       this->rebuild();
     }
-    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 23 && index_search != -1) {
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 25 && index_search != -1) {
       this->rename_point_request = index_search;
     }
   }
@@ -797,7 +910,8 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
   }
 
   if (isDragging) {
-    sf::Vector2i mousePos = sf::Mouse::getPosition(window);
+    const sf::Vector2i mousePixel = sf::Mouse::getPosition(window);
+    const sf::Vector2f mousePos = window.mapPixelToCoords(mousePixel, this->camera_view);
 
     if (this->protocol.is_point_def_by_func(follower, "newPointOnLine")) {
       int line_index = this->protocol.get_point_info(follower)["args"][0];
@@ -1215,6 +1329,27 @@ cout << "points " << this->live_stack[4].x_pos << " " << this->live_stack[4].y_p
     this->live_stack_lines.clear();
   }
 
+  if (this->current_tool == 21 && this->live_stack.size() == 3) {
+    AlgGeom::Point center;
+    if (AlgGeom::CoreGeometryTools::circumcenter(
+          convert_gpoint(this->live_stack[0]), convert_gpoint(this->live_stack[1]),
+          convert_gpoint(this->live_stack[2]), center)) {
+      this->points.push_back(GPoint(center.x, center.y));
+      this->protocol.new_circumcenter(
+        this->points.size() - 1, this->live_stack[0].index,
+        this->live_stack[1].index, this->live_stack[2].index
+      );
+    }
+    this->live_stack.clear();
+  }
+
+  if (this->current_tool == 22 && this->live_stack.size() == 3) {
+    this->triangle_center_request = {
+      this->live_stack[0].index, this->live_stack[1].index, this->live_stack[2].index
+    };
+    this->live_stack.clear();
+  }
+
   if (event.type == sf::Event::KeyPressed &&
       (event.key.code == sf::Keyboard::Delete || event.key.code == sf::Keyboard::BackSpace) &&
       this->current_tool == 0) {
@@ -1229,6 +1364,9 @@ cout << "points " << this->live_stack[4].x_pos << " " << this->live_stack[4].y_p
 }
 
 void GeometryVisual::draw(sf::RenderWindow& window, const sf::Font *font) {
+  this->initialize_camera(window);
+  const sf::View previous_view = window.getView();
+  window.setView(this->camera_view);
   for (int i = 0; i < this->points.size(); ++i) {
     if (!this->points[i].visible) continue;
     if (i == this->selected_point) {
@@ -1281,6 +1419,7 @@ void GeometryVisual::draw(sf::RenderWindow& window, const sf::Font *font) {
       window.draw(label);
     }
   }
+  window.setView(previous_view);
   if (this->protocol.has_searcher_objects()) {
     const float x = window.getSize().x - 44.f;
     sf::RectangleShape close_button(sf::Vector2f(32, 32));
