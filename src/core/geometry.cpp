@@ -307,6 +307,14 @@ void GeometryVisual::rebuild() {
       this->points.push_back(GPoint(
         p.x, p.y
       ));
+    } else if (command_type == "newReflectPointOverPoint") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
+      AlgGeom::Point p = AlgGeom::CoreGeometryTools::reflect_point_over_point(
+        AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
+        AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos)
+      );
+      this->points.push_back(GPoint(p.x, p.y));
     } else {
       std::cerr << "[ERROR]: unknown command type => " << command_type << std::endl;
     }
@@ -877,7 +885,7 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       }
     }
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 21 && index_search != -1 &&
-        this->live_stack.size() < 3) {
+        this->live_stack.size() < 2) {
       p.index = index_search;
       this->live_stack.push_back(p);
     }
@@ -886,7 +894,12 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       p.index = index_search;
       this->live_stack.push_back(p);
     }
-    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 23) {
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 23 && index_search != -1 &&
+        this->live_stack.size() < 3) {
+      p.index = index_search;
+      this->live_stack.push_back(p);
+    }
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 24) {
       if (index_search != -1) {
         this->protocol.set_visibility("Point", index_search, false);
       } else if (line_search != -1) {
@@ -899,11 +912,11 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       this->selected_circle = -1;
       this->rebuild();
     }
-    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 24 && index_search != -1) {
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 25 && index_search != -1) {
       this->protocol.set_point_label_visibility(index_search, false);
       this->rebuild();
     }
-    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 25 && index_search != -1) {
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 26 && index_search != -1) {
       this->rename_point_request = index_search;
     }
   }
@@ -1338,7 +1351,18 @@ cout << "points " << this->live_stack[4].x_pos << " " << this->live_stack[4].y_p
     this->live_stack_lines.clear();
   }
 
-  if (this->current_tool == 21 && this->live_stack.size() == 3) {
+  if (this->current_tool == 21 && this->live_stack.size() == 2) {
+    const AlgGeom::Point reflected = AlgGeom::CoreGeometryTools::reflect_point_over_point(
+      convert_gpoint(this->live_stack[0]), convert_gpoint(this->live_stack[1])
+    );
+    this->points.push_back(GPoint(reflected.x, reflected.y));
+    this->protocol.new_reflect_point_over_point(
+      this->points.size() - 1, this->live_stack[0].index, this->live_stack[1].index
+    );
+    this->live_stack.clear();
+  }
+
+  if (this->current_tool == 22 && this->live_stack.size() == 3) {
     AlgGeom::Point center;
     if (AlgGeom::CoreGeometryTools::circumcenter(
           convert_gpoint(this->live_stack[0]), convert_gpoint(this->live_stack[1]),
@@ -1352,7 +1376,7 @@ cout << "points " << this->live_stack[4].x_pos << " " << this->live_stack[4].y_p
     this->live_stack.clear();
   }
 
-  if (this->current_tool == 22 && this->live_stack.size() == 3) {
+  if (this->current_tool == 23 && this->live_stack.size() == 3) {
     this->triangle_center_request = {
       this->live_stack[0].index, this->live_stack[1].index, this->live_stack[2].index
     };

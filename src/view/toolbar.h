@@ -50,6 +50,7 @@ struct ToolView {
     "Reflect Line Over Line",
     "Isogonal Conjugate",
     "Reflect Point Over Line",
+    "Reflect Point Over Point",
     "Circumcenter",
     "Triangle Center",
     "Hide Object",

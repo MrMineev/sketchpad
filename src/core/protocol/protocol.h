@@ -25,6 +25,7 @@ class Protocol {
   void new_reflect_line_over_line(int pos, int x, int y);
   void new_isogonal_conjugate(int pos, int x, int y, int z, int w);
   void new_reflect_point_over_line(int pos, int x, int y);
+  void new_reflect_point_over_point(int pos, int x, int y);
   void new_incenter(int pos, int x, int y, int z);
   void new_circumcenter(int pos, int x, int y, int z);
   void new_triangle_center(int pos, int x, int y, int z, int number);

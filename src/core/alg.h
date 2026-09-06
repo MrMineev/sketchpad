@@ -331,6 +331,10 @@ static Cubic fitCubicThrough9(
     };
   }
 
+  static Point reflect_point_over_point(Point p, Point center) {
+    return Point(2 * center.x - p.x, 2 * center.y - p.y);
+  }
+
   static Line reflect_line_over_line(const Line &l1, const Line &l2) {
     // 1) pick two distinct points on l1
     Point p1, p2;
