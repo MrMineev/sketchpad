@@ -41,7 +41,7 @@ void Protocol::ensure_metadata() {
       if (this->protocol["Point"][i].is_object()) this->initialize_point_metadata(i);
     }
   }
-  const std::vector<std::string> categories = {"Line", "Circle", "Conic", "Cubic"};
+  const std::vector<std::string> categories = {"Line", "Circle", "Conic", "Cubic", "Text"};
   for (const std::string &category : categories) {
     if (!this->protocol[category].is_array()) continue;
     for (json &object : this->protocol[category]) {
@@ -70,7 +70,7 @@ void Protocol::set_point_label(int pos, std::string label) {
 
 void Protocol::show_all() {
   this->ensure_metadata();
-  const std::vector<std::string> categories = {"Point", "Line", "Circle", "Conic", "Cubic"};
+  const std::vector<std::string> categories = {"Point", "Line", "Circle", "Conic", "Cubic", "Text"};
   for (const std::string &category : categories) {
     if (!this->protocol[category].is_array()) continue;
     for (json &object : this->protocol[category]) {
@@ -155,6 +155,16 @@ void Protocol::new_reflect_point_over_point(int pos, int x, int y) {
     {"func", "newReflectPointOverPoint"},
     {"type", "Point"},
     {"args", {x, y}}
+  };
+  this->initialize_point_metadata(pos);
+  this->protocol["order"].push_back({"Point", pos});
+}
+
+void Protocol::new_project_point_onto_line(int pos, int point, int line) {
+  this->protocol["Point"][pos] = {
+    {"func", "newProjectPointOntoLine"},
+    {"type", "Point"},
+    {"args", {point, line}}
   };
   this->initialize_point_metadata(pos);
   this->protocol["order"].push_back({"Point", pos});
@@ -285,6 +295,26 @@ void Protocol::new_conic(int pos, int x1, int x2, int x3, int x4, int x5) {
   this->protocol["order"].push_back({"Conic", pos});
 }
 
+void Protocol::new_rectangular_hyperbola(int pos, int center, int p1, int p2) {
+  this->protocol["Conic"][pos] = {
+    {"func", "newRectangularHyperbola"},
+    {"type", "Conic"},
+    {"args", {center, p1, p2}}
+  };
+  this->protocol["order"].push_back({"Conic", pos});
+}
+
+void Protocol::new_center(int pos, std::string source_type, int source) {
+  this->protocol["Point"][pos] = {
+    {"func", "newCenter"},
+    {"type", "Point"},
+    {"source_type", source_type},
+    {"args", {source}}
+  };
+  this->initialize_point_metadata(pos);
+  this->protocol["order"].push_back({"Point", pos});
+}
+
 void Protocol::new_cubic(int pos, int x1, int x2, int x3, int x4, int x5, int x6, int x7, int x8, int x9) {
   this->protocol["Cubic"][pos] = {
     {"func", "newCubic"},
@@ -292,6 +322,17 @@ void Protocol::new_cubic(int pos, int x1, int x2, int x3, int x4, int x5, int x6
     {"args", {x1, x2, x3, x4, x5, x6, x7, x8, x9}}
   };
   this->protocol["order"].push_back({"Cubic", pos});
+}
+
+void Protocol::new_text(int pos, ld x, ld y, std::string content) {
+  this->protocol["Text"][pos] = {
+    {"func", "newText"},
+    {"type", "Text"},
+    {"location", {x, y}},
+    {"content", content},
+    {"visible", true}
+  };
+  this->protocol["order"].push_back({"Text", pos});
 }
 
 std::string Protocol::get_string_format() {
@@ -333,17 +374,24 @@ void Protocol::edit_position(int follower, ld px, ld py) {
   this->protocol["Point"][follower]["location"][1] = py;
 }
 
+void Protocol::edit_text_position(int pos, ld x, ld y) {
+  if (!this->protocol["Text"].is_array() || pos < 0 || pos >= this->protocol["Text"].size()) return;
+  this->protocol["Text"][pos]["location"] = {x, y};
+}
+
 void Protocol::delete_obj(std::string start_cat, int pos) {
-  const std::vector<std::string> categories = {"Point", "Line", "Circle", "Conic", "Cubic"};
+  const std::vector<std::string> categories = {"Point", "Line", "Circle", "Conic", "Cubic", "Text"};
 
   auto dependency_type = [](const json &value, size_t arg) -> std::string {
     if (!value.contains("func")) return "";
     const std::string func = value["func"];
 
+    if (func == "newCenter") return arg == 0 ? value.value("source_type", "") : "";
     if (func == "newPointOnLine") return arg == 0 ? "Line" : "";
     if (func == "interLL" || func == "newReflectLineOverLine") return "Line";
     if (func == "interLC") return arg == 0 ? "Line" : "Circle";
-    if (func == "newReflectPointOverLine" || func == "perpNormal" || func == "parallel") {
+    if (func == "newReflectPointOverLine" || func == "newProjectPointOntoLine" ||
+        func == "perpNormal" || func == "parallel") {
       return arg == 0 ? "Point" : "Line";
     }
     if (func == "newTriangleCenter") return arg < 3 ? "Point" : "";
@@ -351,7 +399,8 @@ void Protocol::delete_obj(std::string start_cat, int pos) {
         func == "newReflectPointOverPoint" ||
         func == "circumcircle" || func == "new_incenter" || func == "newCircumcenter" ||
         func == "new_excenter" ||
-        func == "newIsogonalConjugate" || func == "newConic" || func == "newCubic" ||
+        func == "newIsogonalConjugate" || func == "newConic" ||
+        func == "newRectangularHyperbola" || func == "newCubic" ||
         func == "newAngleBisector") {
       return "Point";
     }
@@ -442,7 +491,7 @@ void Protocol::delete_obj(std::string start_cat, int pos) {
 }
 
 bool Protocol::has_searcher_objects() const {
-  const std::vector<std::string> categories = {"Point", "Line", "Circle", "Conic", "Cubic"};
+  const std::vector<std::string> categories = {"Point", "Line", "Circle", "Conic", "Cubic", "Text"};
   for (const std::string &category : categories) {
     if (!this->protocol.contains(category)) continue;
     const json &objects = this->protocol[category];
@@ -460,7 +509,7 @@ bool Protocol::has_searcher_objects() const {
 }
 
 void Protocol::delete_searcher_objects() {
-  const std::vector<std::string> categories = {"Point", "Line", "Circle", "Conic", "Cubic"};
+  const std::vector<std::string> categories = {"Point", "Line", "Circle", "Conic", "Cubic", "Text"};
   while (this->has_searcher_objects()) {
     bool removed = false;
     for (const std::string &category : categories) {

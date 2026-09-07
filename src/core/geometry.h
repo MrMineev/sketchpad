@@ -1,5 +1,8 @@
 #pragma once
 
+#include <algorithm>
+#include <string>
+
 #include "primitives/point.h"
 #include "primitives/line.h"
 #include "primitives/circle.h"
@@ -13,6 +16,21 @@
 
 using json = nlohmann::json; 
 
+struct GTextAnnotation {
+  float x, y;
+  std::string content;
+  int index = 0;
+  bool visible = true;
+  float bounds_left;
+  float bounds_top;
+  float bounds_width;
+  float bounds_height;
+
+  GTextAnnotation(float x, float y, std::string content)
+    : x(x), y(y), content(content), bounds_left(x), bounds_top(y),
+      bounds_width(std::max(20.f, static_cast<float>(content.size()) * 10.f)), bounds_height(28) {}
+};
+
 class GeometryVisual {
  private:
   std::vector<GPoint> live_stack;
@@ -20,6 +38,8 @@ class GeometryVisual {
   std::vector<GCircle> live_stack_circles;
 
   void delete_object(std::string type, int index);
+  int text_searcher(GPoint point) const;
+  int conic_searcher(GPoint point) const;
   void initialize_camera(const sf::RenderWindow &window);
 
   int X_MENU_BORDER;
@@ -35,18 +55,25 @@ class GeometryVisual {
   std::vector<GCircle> circles;
   std::vector<GConic> conics;
   std::vector<GCubic> cubics;
+  std::vector<GTextAnnotation> texts;
 
 
   int current_tool = 0;
 
   bool isDragging = false;
+  bool isDraggingText = false;
   bool refresh_geo_genie_on_release = false;
   int follower = -1;
+  int text_follower = -1;
+  sf::Vector2f text_drag_offset;
   int selected_point = -1;
   int selected_line = -1;
   int selected_circle = -1;
+  int selected_text = -1;
   int inversion_circle_request = -1;
   int rename_point_request = -1;
+  bool text_request_pending = false;
+  sf::Vector2f text_request_position;
   std::vector<int> triangle_center_request;
 
   Protocol protocol;
@@ -74,6 +101,7 @@ class GeometryVisual {
   void hide_geo_genie();
   int take_inversion_request();
   int take_rename_point_request();
+  bool take_text_request(sf::Vector2f &position);
   std::vector<int> take_triangle_center_request();
   void show_all();
   void build_inversion(const GeometryVisual &source, int inversion_circle);

@@ -7,6 +7,8 @@ class GConic {
 public:
     // general conic: A x^2 + B x y + C y^2 + D x + E y + F = 0
     float A, B, C, D, E, F;
+    int index = 0;
+    bool visible = true;
     
     // sampling range and resolution
     float x_min = -3000, x_max = 3000;

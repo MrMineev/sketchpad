@@ -26,6 +26,7 @@ class Protocol {
   void new_isogonal_conjugate(int pos, int x, int y, int z, int w);
   void new_reflect_point_over_line(int pos, int x, int y);
   void new_reflect_point_over_point(int pos, int x, int y);
+  void new_project_point_onto_line(int pos, int point, int line);
   void new_incenter(int pos, int x, int y, int z);
   void new_circumcenter(int pos, int x, int y, int z);
   void new_triangle_center(int pos, int x, int y, int z, int number);
@@ -38,8 +39,12 @@ class Protocol {
   void new_line(int pos, int x, int y, int state); // state = 2 (dashed)
   void new_circle(int pos, int x, int y);
   void new_conic(int pos, int x1, int x2, int x3, int x4, int x5);
+  void new_rectangular_hyperbola(int pos, int center, int p1, int p2);
+  void new_center(int pos, std::string source_type, int source);
   void new_cubic(int pos, int x1, int x2, int x3, int x4, int x5, int x6, int x7, int x8, int x9);
+  void new_text(int pos, ld x, ld y, std::string content);
   void edit_position(int pos, ld x, ld y);
+  void edit_text_position(int pos, ld x, ld y);
   void ensure_metadata();
   void set_visibility(std::string type, int pos, bool visible);
   void set_point_label_visibility(int pos, bool visible);
@@ -65,6 +70,7 @@ class Protocol {
       {"Circle", {}},
       {"Conic", {}},
       {"Cubic", {}},
+      {"Text", {}},
       {"order", {}}
     };
   }

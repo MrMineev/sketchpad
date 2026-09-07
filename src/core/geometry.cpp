@@ -9,6 +9,8 @@
 #include <string>
 #include <algorithm>
 #include <cmath>
+#include <cctype>
+#include <unordered_map>
 
 typedef long double ld;
 
@@ -17,6 +19,133 @@ using json = nlohmann::json;
 const long double EPS = 10;
 
 const int CIRCLE_ASCII_LOC = 48;
+
+struct AnnotationRun {
+  sf::String value;
+  unsigned int size;
+  float offset;
+  bool italic;
+};
+
+static std::string latex_group(const std::string &source, size_t &position) {
+  if (position >= source.size()) return "";
+  if (source[position] == '\\') {
+    const size_t start = position++;
+    while (position < source.size() && std::isalpha(static_cast<unsigned char>(source[position]))) ++position;
+    return source.substr(start, position - start);
+  }
+  if (source[position] != '{') return std::string(1, source[position++]);
+  ++position;
+  const size_t start = position;
+  int depth = 1;
+  while (position < source.size() && depth > 0) {
+    if (source[position] == '{') ++depth;
+    if (source[position] == '}') --depth;
+    ++position;
+  }
+  return source.substr(start, position - start - (depth == 0 ? 1 : 0));
+}
+
+static sf::String decode_latex(const std::string &source) {
+  static const std::unordered_map<std::string, sf::Uint32> symbols = {
+    {"alpha", 0x03B1}, {"beta", 0x03B2}, {"gamma", 0x03B3}, {"delta", 0x03B4},
+    {"epsilon", 0x03B5}, {"theta", 0x03B8}, {"lambda", 0x03BB}, {"mu", 0x03BC},
+    {"pi", 0x03C0}, {"rho", 0x03C1}, {"sigma", 0x03C3}, {"phi", 0x03C6},
+    {"omega", 0x03C9}, {"Gamma", 0x0393}, {"Delta", 0x0394}, {"Theta", 0x0398},
+    {"Lambda", 0x039B}, {"Sigma", 0x03A3}, {"Phi", 0x03A6}, {"Omega", 0x03A9},
+    {"angle", 0x2220}, {"perp", 0x27C2}, {"parallel", 0x2225}, {"cdot", 0x00B7},
+    {"times", 0x00D7}, {"neq", 0x2260}, {"leq", 0x2264}, {"geq", 0x2265},
+    {"approx", 0x2248}, {"infty", 0x221E}, {"pm", 0x00B1}, {"circ", 0x00B0},
+    {"sum", 0x2211}, {"prod", 0x220F}, {"int", 0x222B}, {"cup", 0x222A},
+    {"cap", 0x2229}, {"subset", 0x2282}, {"in", 0x2208}, {"sim", 0x223C},
+    {"cong", 0x2245}, {"rightarrow", 0x2192}, {"leftarrow", 0x2190},
+    {"leftrightarrow", 0x2194}, {"Rightarrow", 0x21D2}, {"Leftrightarrow", 0x21D4}
+  };
+  sf::String result;
+  for (size_t i = 0; i < source.size();) {
+    if (source[i] != '\\') {
+      if (source[i] != '{' && source[i] != '}') result += static_cast<sf::Uint32>(source[i]);
+      ++i;
+      continue;
+    }
+    ++i;
+    const size_t command_start = i;
+    while (i < source.size() && std::isalpha(static_cast<unsigned char>(source[i]))) ++i;
+    const std::string command = source.substr(command_start, i - command_start);
+    if (command == "frac") {
+      const sf::String numerator = decode_latex(latex_group(source, i));
+      const sf::String denominator = decode_latex(latex_group(source, i));
+      result += "(";
+      result += numerator;
+      result += ")/(";
+      result += denominator;
+      result += ")";
+    } else if (command == "sqrt") {
+      result += static_cast<sf::Uint32>(0x221A);
+      result += "(";
+      result += decode_latex(latex_group(source, i));
+      result += ")";
+    } else if (command == "text") {
+      result += sf::String(latex_group(source, i));
+    } else {
+      const auto symbol = symbols.find(command);
+      if (symbol != symbols.end()) {
+        result += symbol->second;
+      } else if (!command.empty()) {
+        result += sf::String(command);
+      } else if (i < source.size()) {
+        result += static_cast<sf::Uint32>(source[i++]);
+      }
+    }
+  }
+  return result;
+}
+
+static std::vector<AnnotationRun> math_runs(const std::string &source) {
+  std::vector<AnnotationRun> runs;
+  std::string regular;
+  auto flush = [&]() {
+    if (regular.empty()) return;
+    runs.push_back({decode_latex(regular), 18, 0, true});
+    regular.clear();
+  };
+  for (size_t i = 0; i < source.size();) {
+    if (source[i] == '^' || source[i] == '_') {
+      const char kind = source[i++];
+      flush();
+      runs.push_back({decode_latex(latex_group(source, i)), 13, kind == '^' ? -7.f : 8.f, true});
+    } else {
+      regular.push_back(source[i++]);
+    }
+  }
+  flush();
+  return runs;
+}
+
+static std::vector<AnnotationRun> annotation_runs(const std::string &source) {
+  std::vector<AnnotationRun> runs;
+  size_t position = 0;
+  while (position < source.size()) {
+    const size_t math_start = source.find('$', position);
+    if (math_start == std::string::npos) {
+      runs.push_back({sf::String(source.substr(position)), 18, 0, false});
+      break;
+    }
+    if (math_start > position) {
+      runs.push_back({sf::String(source.substr(position, math_start - position)), 18, 0, false});
+    }
+    const size_t math_end = source.find('$', math_start + 1);
+    if (math_end == std::string::npos) {
+      runs.push_back({sf::String(source.substr(math_start)), 18, 0, false});
+      break;
+    }
+    std::vector<AnnotationRun> parsed = math_runs(source.substr(math_start + 1, math_end - math_start - 1));
+    runs.insert(runs.end(), parsed.begin(), parsed.end());
+    position = math_end + 1;
+  }
+  if (runs.empty()) runs.push_back({sf::String(source), 18, 0, false});
+  return runs;
+}
 
 void GeometryVisual::save_configuration(std::string &filepath) {
   std::ofstream file(filepath);
@@ -36,6 +165,7 @@ void GeometryVisual::rebuild() {
   this->points.clear();
   this->conics.clear();
   this->cubics.clear();
+  this->texts.clear();
 
   for (auto &obj : protocol.get_order()) {
     string return_type = obj.first;
@@ -228,6 +358,18 @@ void GeometryVisual::rebuild() {
         AlgGeom::Point(this->points[p5].x_pos, this->points[p5].y_pos)
       );
       this->conics.push_back(GConic(c.a, c.b, c.c, c.d, c.e, c.f));
+    } else if (command_type == "newRectangularHyperbola") {
+      int center = information_command["args"][0];
+      int p1 = information_command["args"][1];
+      int p2 = information_command["args"][2];
+      AlgGeom::Conic conic;
+      if (AlgGeom::CoreGeometryTools::rectangular_hyperbola(
+            convert_gpoint(this->points[center]), convert_gpoint(this->points[p1]),
+            convert_gpoint(this->points[p2]), conic)) {
+        this->conics.push_back(GConic(conic.a, conic.b, conic.c, conic.d, conic.e, conic.f));
+      } else {
+        this->conics.push_back(GConic(1, 0, -1, 0, 0, -1));
+      }
     } else if (command_type == "newCubic") {
       int p1 = information_command["args"][0];
       int p2 = information_command["args"][1];
@@ -250,6 +392,11 @@ void GeometryVisual::rebuild() {
         AlgGeom::Point(this->points[p9].x_pos, this->points[p9].y_pos)
       );
       this->cubics.push_back(GCubic(c.a, c.b, c.c, c.d, c.e, c.f, c.g, c.h, c.i, c.j));
+    } else if (command_type == "newText") {
+      this->texts.push_back(GTextAnnotation(
+        information_command["location"][0], information_command["location"][1],
+        information_command["content"]
+      ));
     } else if (command_type == "newAngleBisector") {
       int p1 = information_command["args"][0];
       int p2 = information_command["args"][1];
@@ -307,6 +454,17 @@ void GeometryVisual::rebuild() {
       this->points.push_back(GPoint(
         p.x, p.y
       ));
+    } else if (command_type == "newProjectPointOntoLine") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
+      AlgGeom::Point p = AlgGeom::CoreGeometryTools::project_point_to_line(
+        AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
+        AlgGeom::Line(
+          AlgGeom::Point(this->lines[p2].x1, this->lines[p2].y1),
+          AlgGeom::Point(this->lines[p2].x2, this->lines[p2].y2)
+        )
+      );
+      this->points.push_back(GPoint(p.x, p.y));
     } else if (command_type == "newReflectPointOverPoint") {
       int p1 = information_command["args"][0];
       int p2 = information_command["args"][1];
@@ -315,6 +473,22 @@ void GeometryVisual::rebuild() {
         AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos)
       );
       this->points.push_back(GPoint(p.x, p.y));
+    } else if (command_type == "newCenter") {
+      const int source = information_command["args"][0];
+      const std::string source_type = information_command["source_type"];
+      AlgGeom::Point center;
+      bool valid = false;
+      if (source_type == "Circle") {
+        center = AlgGeom::Point(this->circles[source].x_pos, this->circles[source].y_pos);
+        valid = true;
+      } else if (source_type == "Conic") {
+        const GConic &conic = this->conics[source];
+        valid = AlgGeom::CoreGeometryTools::conic_center(
+          AlgGeom::Conic(conic.A, conic.B, conic.C, conic.D, conic.E, conic.F), center
+        );
+      }
+      if (!valid) center = AlgGeom::Point(0, 0);
+      this->points.push_back(GPoint(center.x, center.y));
     } else {
       std::cerr << "[ERROR]: unknown command type => " << command_type << std::endl;
     }
@@ -335,6 +509,14 @@ void GeometryVisual::rebuild() {
     this->circles[i].index = i;
     this->circles[i].visible = this->protocol.protocol["Circle"][i].value("visible", true);
   }
+  for (int i = 0; i < this->conics.size(); ++i) {
+    this->conics[i].index = i;
+    this->conics[i].visible = this->protocol.protocol["Conic"][i].value("visible", true);
+  }
+  for (int i = 0; i < this->texts.size(); ++i) {
+    this->texts[i].index = i;
+    this->texts[i].visible = this->protocol.protocol["Text"][i].value("visible", true);
+  }
 }
 
 void GeometryVisual::delete_object(std::string type, int index) {
@@ -345,8 +527,11 @@ void GeometryVisual::delete_object(std::string type, int index) {
   this->selected_point = -1;
   this->selected_line = -1;
   this->selected_circle = -1;
+  this->selected_text = -1;
   this->follower = -1;
+  this->text_follower = -1;
   this->isDragging = false;
+  this->isDraggingText = false;
   this->refresh_geo_genie_on_release = false;
   this->rebuild();
 }
@@ -374,8 +559,11 @@ void GeometryVisual::hide_geo_genie() {
   this->selected_point = -1;
   this->selected_line = -1;
   this->selected_circle = -1;
+  this->selected_text = -1;
   this->follower = -1;
+  this->text_follower = -1;
   this->isDragging = false;
+  this->isDraggingText = false;
   this->refresh_geo_genie_on_release = false;
   this->rebuild();
 }
@@ -390,6 +578,13 @@ int GeometryVisual::take_rename_point_request() {
   const int request = this->rename_point_request;
   this->rename_point_request = -1;
   return request;
+}
+
+bool GeometryVisual::take_text_request(sf::Vector2f &position) {
+  if (!this->text_request_pending) return false;
+  position = this->text_request_position;
+  this->text_request_pending = false;
+  return true;
 }
 
 std::vector<int> GeometryVisual::take_triangle_center_request() {
@@ -410,6 +605,7 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
   this->circles.clear();
   this->conics.clear();
   this->cubics.clear();
+  this->texts.clear();
   if (inversion_circle < 0 || inversion_circle >= source.circles.size()) return;
 
   const GCircle &base = source.circles[inversion_circle];
@@ -508,6 +704,34 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
   }
 }
 
+int GeometryVisual::conic_searcher(GPoint point) const {
+  const ld tolerance = EPS * this->camera_zoom;
+  for (int i = 0; i < this->conics.size(); ++i) {
+    const GConic &conic = this->conics[i];
+    if (!conic.visible) continue;
+    const ld value = conic.A * point.x_pos * point.x_pos + conic.B * point.x_pos * point.y_pos +
+                     conic.C * point.y_pos * point.y_pos + conic.D * point.x_pos +
+                     conic.E * point.y_pos + conic.F;
+    const ld gradient_x = 2 * conic.A * point.x_pos + conic.B * point.y_pos + conic.D;
+    const ld gradient_y = conic.B * point.x_pos + 2 * conic.C * point.y_pos + conic.E;
+    const ld gradient = sqrt(gradient_x * gradient_x + gradient_y * gradient_y);
+    if (gradient > AlgGeom::EPS && abs(value) / gradient <= tolerance) return i;
+  }
+  return -1;
+}
+
+int GeometryVisual::text_searcher(GPoint point) const {
+  for (int i = static_cast<int>(this->texts.size()) - 1; i >= 0; --i) {
+    const GTextAnnotation &text = this->texts[i];
+    if (!text.visible) continue;
+    if (point.x_pos >= text.bounds_left - 5 &&
+        point.x_pos <= text.bounds_left + text.bounds_width + 5 &&
+        point.y_pos >= text.bounds_top - 5 &&
+        point.y_pos <= text.bounds_top + text.bounds_height + 5) return i;
+  }
+  return -1;
+}
+
 void GeometryVisual::initialize_camera(const sf::RenderWindow &window) {
   if (this->camera_initialized) return;
   this->camera_view = window.getView();
@@ -559,9 +783,13 @@ bool GeometryVisual::handleCameraEvent(const sf::Event& event, sf::RenderWindow&
     const sf::Vector2f world = window.mapPixelToCoords(
       sf::Vector2i(event.mouseButton.x, event.mouseButton.y), this->camera_view
     );
-    const auto result = this->point_searcher(GPoint(world.x, world.y));
+    const GPoint world_point(world.x, world.y);
+    const auto result = this->point_searcher(world_point);
     const auto indexes = result.first;
-    if (indexes.first == -1 && indexes.second.first == -1 && indexes.second.second == -1) {
+    const int conic_index = this->conic_searcher(world_point);
+    const int text_index = this->text_searcher(world_point);
+    if (indexes.first == -1 && indexes.second.first == -1 && indexes.second.second == -1 &&
+        conic_index == -1 && text_index == -1) {
       this->isPanning = true;
       this->pan_last_pixel = sf::Vector2i(event.mouseButton.x, event.mouseButton.y);
       this->selected_point = -1;
@@ -661,7 +889,9 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       this->selected_point = -1;
       this->selected_line = -1;
       this->selected_circle = -1;
+      this->selected_text = -1;
       this->isDragging = false;
+      this->isDraggingText = false;
       this->refresh_geo_genie_on_release = false;
       return;
     }
@@ -674,24 +904,40 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     auto [_indexes, p] = this->point_searcher(_p);
     auto [index_search, _object_search] = _indexes;
     auto [line_search, circle_search] = _object_search;
+    const int conic_search = this->conic_searcher(_p);
+    const int text_search = this->text_searcher(_p);
 
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 0) {
-      this->selected_point = index_search;
-      this->selected_line = index_search == -1 ? line_search : -1;
-      this->selected_circle = index_search == -1 && line_search == -1 ? circle_search : -1;
-      if (index_search != -1 &&
-          (this->protocol.is_point_def_by_func(index_search, "newPoint") ||
-           this->protocol.is_point_def_by_func(index_search, "newPointOnLine"))) {
-        isDragging = true;
-        follower = index_search;
+      this->selected_text = text_search;
+      this->selected_point = text_search == -1 ? index_search : -1;
+      this->selected_line = text_search == -1 && index_search == -1 ? line_search : -1;
+      this->selected_circle = text_search == -1 && index_search == -1 && line_search == -1
+        ? circle_search : -1;
+      if (text_search != -1) {
+        this->isDraggingText = true;
+        this->text_follower = text_search;
+        this->text_drag_offset = sf::Vector2f(
+          world.x - this->texts[text_search].x, world.y - this->texts[text_search].y
+        );
+        this->isDragging = false;
+        this->follower = -1;
+      } else if (index_search != -1 &&
+                 (this->protocol.is_point_def_by_func(index_search, "newPoint") ||
+                  this->protocol.is_point_def_by_func(index_search, "newPointOnLine"))) {
+        this->isDragging = true;
+        this->follower = index_search;
+        this->isDraggingText = false;
+        this->text_follower = -1;
         this->refresh_geo_genie_on_release = this->protocol.has_searcher_objects();
         if (this->refresh_geo_genie_on_release) {
           this->protocol.delete_searcher_objects();
           this->rebuild();
         }
       } else {
-        isDragging = false;
-        follower = -1;
+        this->isDragging = false;
+        this->follower = -1;
+        this->isDraggingText = false;
+        this->text_follower = -1;
         this->refresh_geo_genie_on_release = false;
       }
     }
@@ -889,40 +1135,86 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       p.index = index_search;
       this->live_stack.push_back(p);
     }
-    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 22 && index_search != -1 &&
-        this->live_stack.size() < 3) {
-      p.index = index_search;
-      this->live_stack.push_back(p);
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 22) {
+      if (line_search != -1 && this->live_stack_lines.empty()) {
+        this->lines[line_search].index = line_search;
+        this->live_stack_lines.push_back(this->lines[line_search]);
+      } else if (index_search != -1 && this->live_stack.empty()) {
+        p.index = index_search;
+        this->live_stack.push_back(p);
+      }
     }
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 23 && index_search != -1 &&
         this->live_stack.size() < 3) {
       p.index = index_search;
       this->live_stack.push_back(p);
     }
-    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 24) {
-      if (index_search != -1) {
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 24 && index_search != -1 &&
+        this->live_stack.size() < 3) {
+      p.index = index_search;
+      this->live_stack.push_back(p);
+    }
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 25 && index_search != -1 &&
+        this->live_stack.size() < 3) {
+      p.index = index_search;
+      this->live_stack.push_back(p);
+    }
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 26) {
+      AlgGeom::Point center;
+      std::string source_type;
+      int source = -1;
+      if (circle_search != -1) {
+        center = AlgGeom::Point(this->circles[circle_search].x_pos, this->circles[circle_search].y_pos);
+        source_type = "Circle";
+        source = circle_search;
+      } else if (conic_search != -1) {
+        const GConic &conic = this->conics[conic_search];
+        if (AlgGeom::CoreGeometryTools::conic_center(
+              AlgGeom::Conic(conic.A, conic.B, conic.C, conic.D, conic.E, conic.F), center)) {
+          source_type = "Conic";
+          source = conic_search;
+        }
+      }
+      if (source != -1) {
+        this->points.push_back(GPoint(center.x, center.y));
+        this->protocol.new_center(this->points.size() - 1, source_type, source);
+      }
+    }
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 27) {
+      this->text_request_position = world;
+      this->text_request_pending = true;
+    }
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 28) {
+      if (text_search != -1) {
+        this->protocol.set_visibility("Text", text_search, false);
+      } else if (index_search != -1) {
         this->protocol.set_visibility("Point", index_search, false);
       } else if (line_search != -1) {
         this->protocol.set_visibility("Line", line_search, false);
       } else if (circle_search != -1) {
         this->protocol.set_visibility("Circle", circle_search, false);
+      } else if (conic_search != -1) {
+        this->protocol.set_visibility("Conic", conic_search, false);
       }
       this->selected_point = -1;
       this->selected_line = -1;
       this->selected_circle = -1;
+      this->selected_text = -1;
       this->rebuild();
     }
-    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 25 && index_search != -1) {
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 29 && index_search != -1) {
       this->protocol.set_point_label_visibility(index_search, false);
       this->rebuild();
     }
-    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 26 && index_search != -1) {
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 30 && index_search != -1) {
       this->rename_point_request = index_search;
     }
   }
   if (event.type == sf::Event::MouseButtonReleased) {
     if (event.mouseButton.button == sf::Mouse::Left) {
       isDragging = false;
+      this->isDraggingText = false;
+      this->text_follower = -1;
       if (this->refresh_geo_genie_on_release) {
         GeoGenie::search(&this->protocol);
         this->refresh_geo_genie_on_release = false;
@@ -962,6 +1254,15 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     // this->points[follower] = GPoint(mousePos.x, mousePos.y);
     // std::cout << "data = " << protocol.get_string_format() << std::endl;
 
+    this->rebuild();
+  }
+
+  if (this->isDraggingText && this->text_follower >= 0 && this->text_follower < this->texts.size()) {
+    const sf::Vector2i mouse_pixel = sf::Mouse::getPosition(window);
+    const sf::Vector2f mouse = window.mapPixelToCoords(mouse_pixel, this->camera_view);
+    this->protocol.edit_text_position(
+      this->text_follower, mouse.x - this->text_drag_offset.x, mouse.y - this->text_drag_offset.y
+    );
     this->rebuild();
   }
   
@@ -1362,7 +1663,24 @@ cout << "points " << this->live_stack[4].x_pos << " " << this->live_stack[4].y_p
     this->live_stack.clear();
   }
 
-  if (this->current_tool == 22 && this->live_stack.size() == 3) {
+  if (this->current_tool == 22 && this->live_stack.size() == 1 &&
+      this->live_stack_lines.size() == 1) {
+    const AlgGeom::Point projected = AlgGeom::CoreGeometryTools::project_point_to_line(
+      convert_gpoint(this->live_stack[0]),
+      AlgGeom::Line(
+        AlgGeom::Point(this->live_stack_lines[0].x1, this->live_stack_lines[0].y1),
+        AlgGeom::Point(this->live_stack_lines[0].x2, this->live_stack_lines[0].y2)
+      )
+    );
+    this->points.push_back(GPoint(projected.x, projected.y));
+    this->protocol.new_project_point_onto_line(
+      this->points.size() - 1, this->live_stack[0].index, this->live_stack_lines[0].index
+    );
+    this->live_stack.clear();
+    this->live_stack_lines.clear();
+  }
+
+  if (this->current_tool == 23 && this->live_stack.size() == 3) {
     AlgGeom::Point center;
     if (AlgGeom::CoreGeometryTools::circumcenter(
           convert_gpoint(this->live_stack[0]), convert_gpoint(this->live_stack[1]),
@@ -1376,17 +1694,33 @@ cout << "points " << this->live_stack[4].x_pos << " " << this->live_stack[4].y_p
     this->live_stack.clear();
   }
 
-  if (this->current_tool == 23 && this->live_stack.size() == 3) {
+  if (this->current_tool == 24 && this->live_stack.size() == 3) {
     this->triangle_center_request = {
       this->live_stack[0].index, this->live_stack[1].index, this->live_stack[2].index
     };
     this->live_stack.clear();
   }
 
+  if (this->current_tool == 25 && this->live_stack.size() == 3) {
+    AlgGeom::Conic conic;
+    if (AlgGeom::CoreGeometryTools::rectangular_hyperbola(
+          convert_gpoint(this->live_stack[0]), convert_gpoint(this->live_stack[1]),
+          convert_gpoint(this->live_stack[2]), conic)) {
+      this->conics.push_back(GConic(conic.a, conic.b, conic.c, conic.d, conic.e, conic.f));
+      this->protocol.new_rectangular_hyperbola(
+        this->conics.size() - 1, this->live_stack[0].index,
+        this->live_stack[1].index, this->live_stack[2].index
+      );
+    }
+    this->live_stack.clear();
+  }
+
   if (event.type == sf::Event::KeyPressed &&
       (event.key.code == sf::Keyboard::Delete || event.key.code == sf::Keyboard::BackSpace) &&
       this->current_tool == 0) {
-    if (this->selected_point != -1) {
+    if (this->selected_text != -1) {
+      this->delete_object("Text", this->selected_text);
+    } else if (this->selected_point != -1) {
       this->delete_point(this->selected_point);
     } else if (this->selected_line != -1) {
       this->delete_line(this->selected_line);
@@ -1429,12 +1763,48 @@ void GeometryVisual::draw(sf::RenderWindow& window, const sf::Font *font) {
     this->circles[i].draw(window);
   }
   for (auto& conic : this->conics) {
-    conic.draw(window);
+    if (conic.visible) conic.draw(window);
   }
   for (auto& cubic : this->cubics) {
     cubic.draw(window);
   }
   if (font != nullptr) {
+    for (GTextAnnotation &annotation : this->texts) {
+      if (!annotation.visible) continue;
+      std::vector<sf::Text> rendered;
+      float cursor = annotation.x;
+      float left = annotation.x;
+      float top = annotation.y - 7;
+      float right = annotation.x;
+      float bottom = annotation.y + 24;
+      for (const AnnotationRun &run : annotation_runs(annotation.content)) {
+        sf::Text text;
+        text.setFont(*font);
+        text.setString(run.value);
+        text.setCharacterSize(run.size);
+        text.setStyle(run.italic ? sf::Text::Italic : sf::Text::Regular);
+        text.setFillColor(sf::Color::Black);
+        text.setPosition(cursor, annotation.y + run.offset);
+        const sf::FloatRect bounds = text.getGlobalBounds();
+        left = std::min(left, bounds.left);
+        top = std::min(top, bounds.top);
+        right = std::max(right, bounds.left + bounds.width);
+        bottom = std::max(bottom, bounds.top + bounds.height);
+        cursor = text.findCharacterPos(text.getString().getSize()).x;
+        rendered.push_back(text);
+      }
+      annotation.bounds_left = left;
+      annotation.bounds_top = top;
+      annotation.bounds_width = std::max(20.f, right - left);
+      annotation.bounds_height = std::max(28.f, bottom - top);
+      sf::RectangleShape box(sf::Vector2f(annotation.bounds_width + 10, annotation.bounds_height + 10));
+      box.setPosition(annotation.bounds_left - 5, annotation.bounds_top - 5);
+      box.setFillColor(sf::Color(255, 255, 255, 220));
+      box.setOutlineColor(this->selected_text == annotation.index ? sf::Color::Black : sf::Color(120, 120, 120));
+      box.setOutlineThickness(this->selected_text == annotation.index ? 2 : 1);
+      window.draw(box);
+      for (const sf::Text &text : rendered) window.draw(text);
+    }
     for (int i = 0; i < this->points.size(); ++i) {
       const GPoint &point = this->points[i];
       std::string point_label = point.label;

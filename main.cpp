@@ -140,6 +140,9 @@ signed main() {
   int dragged_tab = -1;
   int rename_title_tab_id = -1;
   std::string rename_title_text;
+  int text_annotation_tab = -1;
+  sf::Vector2f text_annotation_position;
+  std::string text_annotation_value;
   bool protocol_preview = false;
   int protocol_scroll = 0;
   int rename_tab = -1;
@@ -182,6 +185,30 @@ signed main() {
         } else if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
           rename_title_tab_id = -1;
           rename_title_text.clear();
+        }
+      } else if (text_annotation_tab != -1) {
+        tab_event = true;
+        if (event.type == sf::Event::TextEntered && event.text.unicode >= 32 &&
+            event.text.unicode < 127 && text_annotation_value.size() < 200) {
+          text_annotation_value.push_back(static_cast<char>(event.text.unicode));
+        }
+        if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::BackSpace &&
+            !text_annotation_value.empty()) {
+          text_annotation_value.pop_back();
+        }
+        if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Enter &&
+            !text_annotation_value.empty()) {
+          GeometryVisual &geometry = *tabs[text_annotation_tab].geometry;
+          geometry.protocol.new_text(
+            geometry.texts.size(), text_annotation_position.x,
+            text_annotation_position.y, text_annotation_value
+          );
+          geometry.rebuild();
+          text_annotation_tab = -1;
+          text_annotation_value.clear();
+        } else if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
+          text_annotation_tab = -1;
+          text_annotation_value.clear();
         }
       } else if (!triangle_center_vertices.empty()) {
         tab_event = true;
@@ -398,6 +425,12 @@ signed main() {
       if (!tab_event && !tabs[active_tab].is_linked()) {
         menu.onEvent(event);
         tabs[active_tab].geometry->handleEvent(event, window, menu);
+        sf::Vector2f text_position;
+        if (tabs[active_tab].geometry->take_text_request(text_position)) {
+          text_annotation_tab = active_tab;
+          text_annotation_position = text_position;
+          text_annotation_value.clear();
+        }
         const int rename_request = tabs[active_tab].geometry->take_rename_point_request();
         if (rename_request >= 0 && rename_request < tabs[active_tab].geometry->points.size()) {
           rename_tab = active_tab;
@@ -596,6 +629,29 @@ signed main() {
       prompt_value.setFont(font);
       prompt_value.setString(rename_title_text + "|");
       prompt_value.setCharacterSize(22);
+      prompt_value.setFillColor(sf::Color::Black);
+      prompt_value.setPosition(prompt_x + 16, prompt_y + 58);
+      window.draw(prompt_value);
+    } else if (text_annotation_tab != -1) {
+      const float prompt_x = (window.getSize().x - 520.f) / 2;
+      const float prompt_y = (window.getSize().y - 120.f) / 2;
+      sf::RectangleShape prompt(sf::Vector2f(520, 120));
+      prompt.setPosition(prompt_x, prompt_y);
+      prompt.setFillColor(sf::Color(245, 245, 245));
+      prompt.setOutlineColor(sf::Color::Black);
+      prompt.setOutlineThickness(2);
+      window.draw(prompt);
+      sf::Text prompt_title;
+      prompt_title.setFont(font);
+      prompt_title.setString("Add text - Enter to place, Esc to cancel");
+      prompt_title.setCharacterSize(15);
+      prompt_title.setFillColor(sf::Color::Black);
+      prompt_title.setPosition(prompt_x + 16, prompt_y + 14);
+      window.draw(prompt_title);
+      sf::Text prompt_value;
+      prompt_value.setFont(font);
+      prompt_value.setString(text_annotation_value + "|");
+      prompt_value.setCharacterSize(20);
       prompt_value.setFillColor(sf::Color::Black);
       prompt_value.setPosition(prompt_x + 16, prompt_y + 58);
       window.draw(prompt_value);

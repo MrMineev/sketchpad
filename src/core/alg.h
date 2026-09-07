@@ -104,6 +104,42 @@ class CoreGeometryTools {
     );
   }
 
+  static bool rectangular_hyperbola(Point center, Point p1, Point p2, Conic &result) {
+    const ld u1 = p1.x - center.x;
+    const ld v1 = p1.y - center.y;
+    const ld u2 = p2.x - center.x;
+    const ld v2 = p2.y - center.y;
+    const ld q1 = u1 * u1 - v1 * v1;
+    const ld r1 = u1 * v1;
+    const ld q2 = u2 * u2 - v2 * v2;
+    const ld r2 = u2 * v2;
+    ld a = r1 - r2;
+    ld b = q2 - q1;
+    ld f = q1 * r2 - r1 * q2;
+    const ld scale = max(abs(a), abs(b));
+    if (scale < EPS || abs(f) < EPS) return false;
+    a /= scale;
+    b /= scale;
+    f /= scale;
+    result = Conic(
+      a, b, -a,
+      -2 * a * center.x - b * center.y,
+      2 * a * center.y - b * center.x,
+      a * (center.x * center.x - center.y * center.y) + b * center.x * center.y + f
+    );
+    return true;
+  }
+
+  static bool conic_center(Conic conic, Point &result) {
+    const ld determinant = 4 * conic.a * conic.c - conic.b * conic.b;
+    if (abs(determinant) < EPS) return false;
+    result = Point(
+      (conic.b * conic.e - 2 * conic.c * conic.d) / determinant,
+      (conic.b * conic.d - 2 * conic.a * conic.e) / determinant
+    );
+    return isfinite(result.x) && isfinite(result.y);
+  }
+
   // conic through five points
   static Conic fitConicThrough5(Point p1, Point p2, Point p3, Point p4, Point p5) {
     const Point pts[5] = {p1,p2,p3,p4,p5};

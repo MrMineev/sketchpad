@@ -18,11 +18,13 @@ Sketchpad currently supports:
 - Perpendicular and parallel lines
 - Angle bisectors
 - Point and line reflections
-- Incenter, excenter, and circumcenter constructions
+- Incenter, excenter, circumcenter, and central-conic center constructions
 - Numbered triangle centers `X(1)` through `X(10)`
 - Conics through five points
+- Rectangular hyperbolas defined by a center and two points
 - Cubics through nine points
 - Isogonal conjugates
+- Movable text annotations with inline math syntax
 
 Constructions are stored as dependencies rather than only rendered coordinates. Moving a defining point rebuilds every dependent object. Deleting an object also removes constructions that depend on it while preserving valid indices for the remaining diagram.
 
@@ -89,6 +91,19 @@ The toolbar provides:
 - **Show All** to restore hidden objects and labels
 
 Labels and visibility settings are stored in the diagram protocol and propagate to live inversion views.
+
+### Text and inline math
+
+Use the **Text** tool and click the canvas to place an annotation. Plain text can contain inline math between `$` delimiters, for example:
+
+```text
+Euler: $OI^2=R(R-2r)$
+$\\angle ABC=90^\\circ$
+$AB \\perp CD$ and $l_1 \\parallel l_2$
+$\\frac{AB}{CD}=\\sqrt{2}$
+```
+
+The built-in math renderer supports superscripts, subscripts, `\\frac`, `\\sqrt`, Greek letters, and common operators including `\\angle`, `\\perp`, `\\parallel`, `\\cdot`, `\\times`, `\\neq`, `\\leq`, `\\geq`, `\\approx`, and `\\infty`. Select and drag a text box with the **Mouse** tool to move it. Selected annotations can also be deleted or hidden like other objects.
 
 ### Navigation and responsive layout
 
@@ -173,5 +188,6 @@ gui_assets/                  Fonts and GUI textures
 - Full-diagram inversion currently omits segments, conics, and cubics because their inverses are not generally represented by the existing exact primitive types.
 - Live inversion tabs are generated read-only views; edit their source tab to update them.
 - The numbered triangle-center catalog currently covers `X(1)` through `X(10)`.
+- Inline math uses a built-in LaTeX-like subset rather than a complete TeX engine; fractions are rendered in compact inline form.
 - Build configuration is currently macOS/Homebrew-oriented and may require path changes on other systems.
 - Sketchpad is under active development; malformed or degenerate constructions outside the guarded tools may still require additional handling.
