@@ -16,6 +16,12 @@
 
 using json = nlohmann::json; 
 
+struct ObjectStyleRequest {
+  std::string type;
+  int index = -1;
+  sf::Vector2i screen_position;
+};
+
 struct GTextAnnotation {
   float x, y;
   std::string content;
@@ -74,6 +80,8 @@ class GeometryVisual {
   int rename_point_request = -1;
   bool text_request_pending = false;
   sf::Vector2f text_request_position;
+  bool style_request_pending = false;
+  ObjectStyleRequest style_request;
   std::vector<int> triangle_center_request;
 
   Protocol protocol;
@@ -102,6 +110,7 @@ class GeometryVisual {
   int take_inversion_request();
   int take_rename_point_request();
   bool take_text_request(sf::Vector2f &position);
+  bool take_style_request(ObjectStyleRequest &request);
   std::vector<int> take_triangle_center_request();
   void show_all();
   void build_inversion(const GeometryVisual &source, int inversion_circle);

@@ -9,6 +9,9 @@ public:
     float A, B, C, D, E, F;
     int index = 0;
     bool visible = true;
+    sf::Color color = sf::Color::Cyan;
+    float thickness = 1;
+    bool dashed = false;
     
     // sampling range and resolution
     float x_min = -3000, x_max = 3000;

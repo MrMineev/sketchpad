@@ -20,6 +20,8 @@ class Protocol {
   json get_point_info(int pos);
   void new_point(int pos, long double x, long double y);
   void new_point_on_line(int pos, int line_index, long double ratio);
+  void new_point_on_circle(int pos, int circle_index, long double angle);
+  void new_point_on_conic(int pos, int conic_index, ld x, ld y);
   void new_circumcircle(int pos, int x, int y, int z);
   void new_angle_bisector(int pos, int x, int y, int z);
   void new_reflect_line_over_line(int pos, int x, int y);
@@ -47,6 +49,8 @@ class Protocol {
   void edit_text_position(int pos, ld x, ld y);
   void ensure_metadata();
   void set_visibility(std::string type, int pos, bool visible);
+  void set_style(std::string type, int pos, int red, int green, int blue, float thickness, bool dashed);
+  void reset_style(std::string type, int pos);
   void set_point_label_visibility(int pos, bool visible);
   void set_point_label(int pos, std::string label);
   void show_all();

@@ -6,6 +6,9 @@ public:
 
   int index = 0;
   bool visible = true;
+  sf::Color color = sf::Color::Green;
+  float thickness = 1;
+  bool dashed = false;
 
   sf::CircleShape shape;
 

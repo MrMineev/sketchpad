@@ -17,6 +17,9 @@ class GLine {
   int index = 0;
   int line_type = 0;
   bool visible = true;
+  sf::Color color = sf::Color::Blue;
+  float thickness = 1;
+  bool dashed = false;
   float x1, y1, x2, y2;
   sf::VertexArray line;
 

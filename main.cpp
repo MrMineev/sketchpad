@@ -26,6 +26,25 @@ const ll SCREEN_Y = 800;
 const ll MENU_BAR_X = 250;
 const float TAB_HEIGHT = 36;
 const float TAB_WIDTH = 160;
+const std::vector<sf::Color> STYLE_COLORS = {
+  sf::Color::Black, sf::Color::White, sf::Color::Red, sf::Color(255, 140, 0),
+  sf::Color::Yellow, sf::Color::Green, sf::Color::Cyan, sf::Color::Blue,
+  sf::Color(128, 0, 180), sf::Color(255, 105, 180), sf::Color(110, 110, 110),
+  sf::Color(140, 85, 35)
+};
+
+sf::Vector2f style_panel_position(const sf::RenderWindow &window, const ObjectStyleRequest &request) {
+  return sf::Vector2f(
+    std::clamp(
+      static_cast<float>(request.screen_position.x), 260.f,
+      std::max(260.f, window.getSize().x - 300.f)
+    ),
+    std::clamp(
+      static_cast<float>(request.screen_position.y), 40.f,
+      std::max(40.f, window.getSize().y - 350.f)
+    )
+  );
+}
 
 struct SketchTab {
   std::unique_ptr<GeometryVisual> geometry;
@@ -142,6 +161,8 @@ signed main() {
   std::string rename_title_text;
   int text_annotation_tab = -1;
   sf::Vector2f text_annotation_position;
+  int style_tab = -1;
+  ObjectStyleRequest style_target;
   std::string text_annotation_value;
   bool protocol_preview = false;
   int protocol_scroll = 0;
@@ -166,7 +187,66 @@ signed main() {
         for (SketchTab &tab : tabs) tab.geometry->resize_camera(width, height);
         tab_event = true;
       }
-      if (rename_title_tab_id != -1) {
+      if (style_tab != -1) {
+        tab_event = true;
+        if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
+          style_tab = -1;
+        } else if (event.type == sf::Event::MouseButtonPressed &&
+                   event.mouseButton.button == sf::Mouse::Left) {
+          const sf::Vector2f panel = style_panel_position(window, style_target);
+          const sf::Vector2f mouse(event.mouseButton.x, event.mouseButton.y);
+          if (mouse.x < panel.x || mouse.x > panel.x + 280 ||
+              mouse.y < panel.y || mouse.y > panel.y + 330 ||
+              (mouse.x >= panel.x + 250 && mouse.y <= panel.y + 32)) {
+            style_tab = -1;
+          } else {
+            GeometryVisual &geometry = *tabs[style_tab].geometry;
+            json &object = geometry.protocol.protocol[style_target.type][style_target.index];
+            auto apply = [&](sf::Color color, float thickness, bool dashed) {
+              geometry.protocol.set_style(
+                style_target.type, style_target.index, color.r, color.g, color.b, thickness, dashed
+              );
+              geometry.rebuild();
+            };
+            if (mouse.x >= panel.x + 15 && mouse.x <= panel.x + 115 &&
+                mouse.y >= panel.y + 42 && mouse.y <= panel.y + 70) {
+              geometry.protocol.reset_style(style_target.type, style_target.index);
+              geometry.rebuild();
+            } else if (mouse.y >= panel.y + 82 && mouse.y <= panel.y + 157) {
+              const int column = static_cast<int>((mouse.x - panel.x - 12) / 43);
+              const int row = static_cast<int>((mouse.y - panel.y - 82) / 38);
+              const int color_index = row * 6 + column;
+              if (column >= 0 && column < 6 && row >= 0 && row < 2 &&
+                  color_index < STYLE_COLORS.size()) {
+                apply(
+                  STYLE_COLORS[color_index], object.value("thickness", 1.f),
+                  object.value("dashed", false)
+                );
+              }
+            } else if (mouse.y >= panel.y + 202 && mouse.y <= panel.y + 234) {
+              const json color = object.value("color", json({0, 0, 0}));
+              const sf::Color current(
+                color[0].get<int>(), color[1].get<int>(), color[2].get<int>()
+              );
+              float thickness = object.value("thickness", 1.f);
+              if (mouse.x >= panel.x + 15 && mouse.x <= panel.x + 60) thickness -= 1;
+              if (mouse.x >= panel.x + 205 && mouse.x <= panel.x + 250) thickness += 1;
+              apply(current, thickness, object.value("dashed", false));
+            } else if (style_target.type != "Point" && mouse.y >= panel.y + 265 &&
+                       mouse.y <= panel.y + 299) {
+              const json color = object.value("color", json({0, 0, 0}));
+              const sf::Color current(
+                color[0].get<int>(), color[1].get<int>(), color[2].get<int>()
+              );
+              if (mouse.x >= panel.x + 15 && mouse.x <= panel.x + 125) {
+                apply(current, object.value("thickness", 1.f), false);
+              } else if (mouse.x >= panel.x + 145 && mouse.x <= panel.x + 255) {
+                apply(current, object.value("thickness", 1.f), true);
+              }
+            }
+          }
+        }
+      } else if (rename_title_tab_id != -1) {
         tab_event = true;
         if (event.type == sf::Event::TextEntered && event.text.unicode >= 32 &&
             event.text.unicode < 127 && rename_title_text.size() < 40) {
@@ -425,6 +505,11 @@ signed main() {
       if (!tab_event && !tabs[active_tab].is_linked()) {
         menu.onEvent(event);
         tabs[active_tab].geometry->handleEvent(event, window, menu);
+        ObjectStyleRequest requested_style;
+        if (tabs[active_tab].geometry->take_style_request(requested_style)) {
+          style_tab = active_tab;
+          style_target = requested_style;
+        }
         sf::Vector2f text_position;
         if (tabs[active_tab].geometry->take_text_request(text_position)) {
           text_annotation_tab = active_tab;
@@ -609,7 +694,98 @@ signed main() {
     }
     window.draw(strips);
 
-    if (rename_title_tab_id != -1) {
+    if (style_tab != -1) {
+      const sf::Vector2f panel_position = style_panel_position(window, style_target);
+      const json &style = tabs[style_tab].geometry->protocol.protocol[style_target.type][style_target.index];
+      sf::RectangleShape panel(sf::Vector2f(280, 330));
+      panel.setPosition(panel_position);
+      panel.setFillColor(sf::Color(245, 245, 245));
+      panel.setOutlineColor(sf::Color::Black);
+      panel.setOutlineThickness(2);
+      window.draw(panel);
+      sf::Text title;
+      title.setFont(font);
+      title.setString(style_target.type + " style");
+      title.setCharacterSize(17);
+      title.setFillColor(sf::Color::Black);
+      title.setPosition(panel_position.x + 14, panel_position.y + 10);
+      window.draw(title);
+      sf::VertexArray close(sf::Lines, 4);
+      close[0] = sf::Vertex(panel_position + sf::Vector2f(254, 10), sf::Color::Black);
+      close[1] = sf::Vertex(panel_position + sf::Vector2f(270, 26), sf::Color::Black);
+      close[2] = sf::Vertex(panel_position + sf::Vector2f(270, 10), sf::Color::Black);
+      close[3] = sf::Vertex(panel_position + sf::Vector2f(254, 26), sf::Color::Black);
+      window.draw(close);
+      sf::RectangleShape reset(sf::Vector2f(100, 28));
+      reset.setPosition(panel_position + sf::Vector2f(15, 42));
+      reset.setFillColor(sf::Color(220, 220, 220));
+      reset.setOutlineColor(sf::Color::Black);
+      reset.setOutlineThickness(1);
+      window.draw(reset);
+      sf::Text reset_text("Default", font, 14);
+      reset_text.setFillColor(sf::Color::Black);
+      reset_text.setPosition(panel_position + sf::Vector2f(36, 47));
+      window.draw(reset_text);
+      for (int i = 0; i < STYLE_COLORS.size(); ++i) {
+        sf::RectangleShape swatch(sf::Vector2f(32, 30));
+        swatch.setPosition(panel_position + sf::Vector2f(12 + (i % 6) * 43, 82 + (i / 6) * 38));
+        swatch.setFillColor(STYLE_COLORS[i]);
+        swatch.setOutlineColor(sf::Color::Black);
+        swatch.setOutlineThickness(1);
+        window.draw(swatch);
+      }
+      sf::Text thickness_label("Thickness", font, 15);
+      thickness_label.setFillColor(sf::Color::Black);
+      thickness_label.setPosition(panel_position + sf::Vector2f(15, 174));
+      window.draw(thickness_label);
+      sf::RectangleShape minus(sf::Vector2f(45, 32));
+      minus.setPosition(panel_position + sf::Vector2f(15, 202));
+      minus.setFillColor(sf::Color(220, 220, 220));
+      minus.setOutlineColor(sf::Color::Black);
+      minus.setOutlineThickness(1);
+      window.draw(minus);
+      sf::RectangleShape plus_button(sf::Vector2f(45, 32));
+      plus_button.setPosition(panel_position + sf::Vector2f(205, 202));
+      plus_button.setFillColor(sf::Color(220, 220, 220));
+      plus_button.setOutlineColor(sf::Color::Black);
+      plus_button.setOutlineThickness(1);
+      window.draw(plus_button);
+      sf::Text minus_text("-", font, 22);
+      minus_text.setFillColor(sf::Color::Black);
+      minus_text.setPosition(panel_position + sf::Vector2f(32, 202));
+      window.draw(minus_text);
+      sf::Text plus_text("+", font, 20);
+      plus_text.setFillColor(sf::Color::Black);
+      plus_text.setPosition(panel_position + sf::Vector2f(219, 203));
+      window.draw(plus_text);
+      sf::Text thickness_value(std::to_string(static_cast<int>(style.value("thickness", 1.f))), font, 18);
+      thickness_value.setFillColor(sf::Color::Black);
+      thickness_value.setPosition(panel_position + sf::Vector2f(132, 207));
+      window.draw(thickness_value);
+      if (style_target.type != "Point") {
+        const bool dashed = style.value("dashed", false);
+        sf::RectangleShape solid(sf::Vector2f(110, 34));
+        solid.setPosition(panel_position + sf::Vector2f(15, 265));
+        solid.setFillColor(dashed ? sf::Color(220, 220, 220) : sf::Color(170, 205, 245));
+        solid.setOutlineColor(sf::Color::Black);
+        solid.setOutlineThickness(1);
+        window.draw(solid);
+        sf::RectangleShape dashed_button(sf::Vector2f(110, 34));
+        dashed_button.setPosition(panel_position + sf::Vector2f(145, 265));
+        dashed_button.setFillColor(dashed ? sf::Color(170, 205, 245) : sf::Color(220, 220, 220));
+        dashed_button.setOutlineColor(sf::Color::Black);
+        dashed_button.setOutlineThickness(1);
+        window.draw(dashed_button);
+        sf::Text solid_text("Solid", font, 14);
+        solid_text.setFillColor(sf::Color::Black);
+        solid_text.setPosition(panel_position + sf::Vector2f(50, 273));
+        window.draw(solid_text);
+        sf::Text dashed_text("Dashed", font, 14);
+        dashed_text.setFillColor(sf::Color::Black);
+        dashed_text.setPosition(panel_position + sf::Vector2f(174, 273));
+        window.draw(dashed_text);
+      }
+    } else if (rename_title_tab_id != -1) {
       const float prompt_x = (window.getSize().x - 420.f) / 2;
       const float prompt_y = (window.getSize().y - 120.f) / 2;
       sf::RectangleShape prompt(sf::Vector2f(420, 120));

@@ -10,7 +10,7 @@ A dynamic geometry visualization program written in C++17 with SFML. Sketchpad i
 
 Sketchpad currently supports:
 
-- Free points and points constrained to lines
+- Free points and draggable points constrained to lines, circles, and conics
 - Segments and full lines
 - Circles defined by two or three points
 - Midpoints
@@ -91,6 +91,10 @@ The toolbar provides:
 - **Show All** to restore hidden objects and labels
 
 Labels and visibility settings are stored in the diagram protocol and propagate to live inversion views.
+
+### Object styles
+
+Right-click a point, segment, line, circle, or conic to open its style panel. Each object can use its default appearance or a custom palette color and thickness from 1 through 10. Lines, circles, and conics can additionally be rendered as solid or dashed strokes. Styles are stored in the `.sp` protocol and propagate into live inversion views.
 
 ### Text and inline math
 

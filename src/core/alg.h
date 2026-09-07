@@ -558,6 +558,31 @@ static Cubic fitCubicThrough9(
     return AlgGeom::CoreGeometryTools::inter_lines(l, n_l);
   }
 
+  static bool project_point_to_conic(Point point, Conic conic, Point &result) {
+    result = point;
+    for (int iteration = 0; iteration < 40; ++iteration) {
+      const ld value = conic.a * result.x * result.x + conic.b * result.x * result.y +
+                       conic.c * result.y * result.y + conic.d * result.x +
+                       conic.e * result.y + conic.f;
+      const ld gradient_x = 2 * conic.a * result.x + conic.b * result.y + conic.d;
+      const ld gradient_y = conic.b * result.x + 2 * conic.c * result.y + conic.e;
+      const ld gradient_squared = gradient_x * gradient_x + gradient_y * gradient_y;
+      if (gradient_squared < EPS * EPS) return false;
+      if (abs(value) / sqrt(gradient_squared) < EPS) return true;
+      const ld step = value / gradient_squared;
+      result.x -= step * gradient_x;
+      result.y -= step * gradient_y;
+      if (!isfinite(result.x) || !isfinite(result.y)) return false;
+    }
+    const ld value = conic.a * result.x * result.x + conic.b * result.x * result.y +
+                     conic.c * result.y * result.y + conic.d * result.x +
+                     conic.e * result.y + conic.f;
+    const ld gradient_x = 2 * conic.a * result.x + conic.b * result.y + conic.d;
+    const ld gradient_y = conic.b * result.x + 2 * conic.c * result.y + conic.e;
+    const ld gradient = sqrt(gradient_x * gradient_x + gradient_y * gradient_y);
+    return gradient > EPS && abs(value) / gradient < EPS;
+  }
+
   static Point project_point_to_circle(Point p, Circle c) {
     ld ratio = c.radius / AlgGeom::CoreGeometryTools::dist_points(p, c.p);
     return AlgGeom::Point(

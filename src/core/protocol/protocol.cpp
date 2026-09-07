@@ -9,6 +9,22 @@ typedef long double ld;
 
 using json = nlohmann::json; 
 
+static void apply_default_style(const std::string &type, json &object, bool overwrite) {
+  json color = {0, 0, 0};
+  if (type == "Point") color = {255, 0, 0};
+  if (type == "Line") {
+    color = object.value("version", 0) == 2 ? json({238, 130, 238}) : json({0, 0, 255});
+  }
+  if (type == "Circle") color = {0, 255, 0};
+  if (type == "Conic") color = {0, 255, 255};
+  if (overwrite || !object.contains("color")) object["color"] = color;
+  if (overwrite || !object.contains("thickness")) object["thickness"] = 1.f;
+  if (type != "Point" && (overwrite || !object.contains("dashed"))) {
+    object["dashed"] = type == "Line" && object.value("version", 0) == 2;
+  }
+  if (overwrite || !object.contains("style_custom")) object["style_custom"] = false;
+}
+
 std::string Protocol::next_point_label() const {
   std::set<std::string> used;
   if (this->protocol.contains("Point") && this->protocol["Point"].is_array()) {
@@ -33,6 +49,7 @@ void Protocol::initialize_point_metadata(int pos) {
   if (!point.contains("label")) point["label"] = this->next_point_label();
   if (!point.contains("visible")) point["visible"] = true;
   if (!point.contains("label_visible")) point["label_visible"] = true;
+  apply_default_style("Point", point, false);
 }
 
 void Protocol::ensure_metadata() {
@@ -45,7 +62,15 @@ void Protocol::ensure_metadata() {
   for (const std::string &category : categories) {
     if (!this->protocol[category].is_array()) continue;
     for (json &object : this->protocol[category]) {
-      if (object.is_object() && !object.contains("visible")) object["visible"] = true;
+      if (!object.is_object()) continue;
+      if (!object.contains("visible")) object["visible"] = true;
+      if (category == "Line" || category == "Circle" || category == "Conic") {
+        apply_default_style(category, object, false);
+        if (category == "Circle" && !object.value("style_custom", false) &&
+            object["color"] == json({0, 128, 0})) {
+          object["color"] = {0, 255, 0};
+        }
+      }
     }
   }
 }
@@ -54,6 +79,25 @@ void Protocol::set_visibility(std::string type, int pos, bool visible) {
   if (!this->protocol.contains(type) || !this->protocol[type].is_array() ||
       pos < 0 || pos >= this->protocol[type].size() || !this->protocol[type][pos].is_object()) return;
   this->protocol[type][pos]["visible"] = visible;
+}
+
+void Protocol::set_style(std::string type, int pos, int red, int green, int blue,
+                         float thickness, bool dashed) {
+  if (!this->protocol.contains(type) || !this->protocol[type].is_array() ||
+      pos < 0 || pos >= this->protocol[type].size() || !this->protocol[type][pos].is_object()) return;
+  json &object = this->protocol[type][pos];
+  object["color"] = {
+    std::clamp(red, 0, 255), std::clamp(green, 0, 255), std::clamp(blue, 0, 255)
+  };
+  object["thickness"] = std::clamp(thickness, 1.f, 10.f);
+  object["style_custom"] = true;
+  if (type != "Point") object["dashed"] = dashed;
+}
+
+void Protocol::reset_style(std::string type, int pos) {
+  if (!this->protocol.contains(type) || !this->protocol[type].is_array() ||
+      pos < 0 || pos >= this->protocol[type].size() || !this->protocol[type][pos].is_object()) return;
+  apply_default_style(type, this->protocol[type][pos], true);
 }
 
 void Protocol::set_point_label_visibility(int pos, bool visible) {
@@ -96,6 +140,27 @@ void Protocol::new_point_on_line(int pos, int line_index, long double ratio) {
     {"func", "newPointOnLine"},
     {"type", "Point"},
     {"args", {line_index, ratio}}
+  };
+  this->initialize_point_metadata(pos);
+  this->protocol["order"].push_back({"Point", pos});
+}
+
+void Protocol::new_point_on_circle(int pos, int circle_index, long double angle) {
+  this->protocol["Point"][pos] = {
+    {"func", "newPointOnCircle"},
+    {"type", "Point"},
+    {"args", {circle_index, angle}}
+  };
+  this->initialize_point_metadata(pos);
+  this->protocol["order"].push_back({"Point", pos});
+}
+
+void Protocol::new_point_on_conic(int pos, int conic_index, ld x, ld y) {
+  this->protocol["Point"][pos] = {
+    {"func", "newPointOnConic"},
+    {"type", "Point"},
+    {"args", {conic_index}},
+    {"location", {x, y}}
   };
   this->initialize_point_metadata(pos);
   this->protocol["order"].push_back({"Point", pos});
@@ -388,6 +453,8 @@ void Protocol::delete_obj(std::string start_cat, int pos) {
 
     if (func == "newCenter") return arg == 0 ? value.value("source_type", "") : "";
     if (func == "newPointOnLine") return arg == 0 ? "Line" : "";
+    if (func == "newPointOnCircle") return arg == 0 ? "Circle" : "";
+    if (func == "newPointOnConic") return arg == 0 ? "Conic" : "";
     if (func == "interLL" || func == "newReflectLineOverLine") return "Line";
     if (func == "interLC") return arg == 0 ? "Line" : "Circle";
     if (func == "newReflectPointOverLine" || func == "newProjectPointOntoLine" ||

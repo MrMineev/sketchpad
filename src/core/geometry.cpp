@@ -20,6 +20,15 @@ const long double EPS = 10;
 
 const int CIRCLE_ASCII_LOC = 48;
 
+static sf::Color protocol_color(const json &object, sf::Color fallback) {
+  if (!object.contains("color") || !object["color"].is_array() || object["color"].size() < 3) {
+    return fallback;
+  }
+  return sf::Color(
+    object["color"][0].get<int>(), object["color"][1].get<int>(), object["color"][2].get<int>()
+  );
+}
+
 struct AnnotationRun {
   sf::String value;
   unsigned int size;
@@ -122,6 +131,40 @@ static std::vector<AnnotationRun> math_runs(const std::string &source) {
   return runs;
 }
 
+static void append_stroke_segment(sf::VertexArray &vertices, sf::Vector2f start,
+                                  sf::Vector2f end, float thickness, sf::Color color) {
+  const sf::Vector2f direction = end - start;
+  const float length = sqrt(direction.x * direction.x + direction.y * direction.y);
+  if (length < 1e-5f) return;
+  const sf::Vector2f normal(-direction.y / length * thickness / 2,
+                            direction.x / length * thickness / 2);
+  vertices.append(sf::Vertex(start + normal, color));
+  vertices.append(sf::Vertex(end + normal, color));
+  vertices.append(sf::Vertex(end - normal, color));
+  vertices.append(sf::Vertex(start - normal, color));
+}
+
+static void append_styled_line(sf::VertexArray &vertices, sf::Vector2f start,
+                               sf::Vector2f end, float thickness, sf::Color color,
+                               bool dashed, float zoom) {
+  const sf::Vector2f direction = end - start;
+  const float length = sqrt(direction.x * direction.x + direction.y * direction.y);
+  if (length < 1e-5f) return;
+  if (!dashed) {
+    append_stroke_segment(vertices, start, end, thickness, color);
+    return;
+  }
+  const sf::Vector2f unit = direction / length;
+  const float dash = 12 * zoom;
+  const float gap = 8 * zoom;
+  for (float offset = 0; offset < length; offset += dash + gap) {
+    append_stroke_segment(
+      vertices, start + unit * offset, start + unit * std::min(length, offset + dash),
+      thickness, color
+    );
+  }
+}
+
 static std::vector<AnnotationRun> annotation_runs(const std::string &source) {
   std::vector<AnnotationRun> runs;
   size_t position = 0;
@@ -195,6 +238,23 @@ void GeometryVisual::rebuild() {
         point_ratio
       );
       this->points.push_back(GPoint(p.x, p.y));
+    } else if (command_type == "newPointOnCircle") {
+      const int circle_index = information_command["args"][0];
+      const ld angle = information_command["args"][1];
+      this->points.push_back(GPoint(
+        this->circles[circle_index].x_pos + this->circles[circle_index].radius * cos(angle),
+        this->circles[circle_index].y_pos + this->circles[circle_index].radius * sin(angle)
+      ));
+    } else if (command_type == "newPointOnConic") {
+      const int conic_index = information_command["args"][0];
+      const GConic &conic = this->conics[conic_index];
+      AlgGeom::Point point(information_command["location"][0], information_command["location"][1]);
+      AlgGeom::Point projected;
+      if (AlgGeom::CoreGeometryTools::project_point_to_conic(
+            point, AlgGeom::Conic(conic.A, conic.B, conic.C, conic.D, conic.E, conic.F), projected)) {
+        point = projected;
+      }
+      this->points.push_back(GPoint(point.x, point.y));
     } else if (command_type == "newLine") {
       int p1 = information_command["args"][0];
       int p2 = information_command["args"][1];
@@ -500,18 +560,32 @@ void GeometryVisual::rebuild() {
     this->points[i].label = point.value("label", "");
     this->points[i].visible = point.value("visible", true);
     this->points[i].label_visible = point.value("label_visible", true);
+    this->points[i].color = protocol_color(point, sf::Color::Red);
+    this->points[i].thickness = point.value("thickness", 1.f);
   }
   for (int i = 0; i < this->lines.size(); ++i) {
     this->lines[i].index = i;
-    this->lines[i].visible = this->protocol.protocol["Line"][i].value("visible", true);
+    const json &line = this->protocol.protocol["Line"][i];
+    this->lines[i].visible = line.value("visible", true);
+    this->lines[i].color = protocol_color(line, sf::Color::Blue);
+    this->lines[i].thickness = line.value("thickness", 1.f);
+    this->lines[i].dashed = line.value("dashed", false);
   }
   for (int i = 0; i < this->circles.size(); ++i) {
     this->circles[i].index = i;
-    this->circles[i].visible = this->protocol.protocol["Circle"][i].value("visible", true);
+    const json &circle = this->protocol.protocol["Circle"][i];
+    this->circles[i].visible = circle.value("visible", true);
+    this->circles[i].color = protocol_color(circle, sf::Color::Green);
+    this->circles[i].thickness = circle.value("thickness", 1.f);
+    this->circles[i].dashed = circle.value("dashed", false);
   }
   for (int i = 0; i < this->conics.size(); ++i) {
     this->conics[i].index = i;
-    this->conics[i].visible = this->protocol.protocol["Conic"][i].value("visible", true);
+    const json &conic = this->protocol.protocol["Conic"][i];
+    this->conics[i].visible = conic.value("visible", true);
+    this->conics[i].color = protocol_color(conic, sf::Color::Cyan);
+    this->conics[i].thickness = conic.value("thickness", 1.f);
+    this->conics[i].dashed = conic.value("dashed", false);
   }
   for (int i = 0; i < this->texts.size(); ++i) {
     this->texts[i].index = i;
@@ -587,6 +661,13 @@ bool GeometryVisual::take_text_request(sf::Vector2f &position) {
   return true;
 }
 
+bool GeometryVisual::take_style_request(ObjectStyleRequest &request) {
+  if (!this->style_request_pending) return false;
+  request = this->style_request;
+  this->style_request_pending = false;
+  return true;
+}
+
 std::vector<int> GeometryVisual::take_triangle_center_request() {
   std::vector<int> request = this->triangle_center_request;
   this->triangle_center_request.clear();
@@ -619,7 +700,8 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
     return objects.is_array() && index >= 0 && index < objects.size() && objects[index].is_object() &&
            objects[index].value("searcher", false);
   };
-  auto add_line = [&](AlgGeom::Point point, AlgGeom::Point direction, bool visible) {
+  auto add_line = [&](AlgGeom::Point point, AlgGeom::Point direction, bool visible,
+                      sf::Color color, float thickness, bool dashed) {
     const ld length = sqrt(direction.x * direction.x + direction.y * direction.y);
     if (length < AlgGeom::EPS) return;
     direction.x /= length;
@@ -630,6 +712,9 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
     );
     line.line_type = 1;
     line.visible = visible;
+    line.color = color;
+    line.thickness = thickness;
+    line.dashed = dashed;
     line.index = this->lines.size();
     this->lines.push_back(line);
   };
@@ -645,6 +730,8 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
     result.label = source.points[i].label;
     result.visible = source.points[i].visible;
     result.label_visible = source.points[i].label_visible;
+    result.color = source.points[i].color;
+    result.thickness = source.points[i].thickness;
     result.index = this->points.size();
     this->points.push_back(result);
   }
@@ -659,7 +746,10 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
     if (norm < AlgGeom::EPS) continue;
     const ld distance = abs(line.a * center.x + line.b * center.y + line.c) / norm;
     if (distance < AlgGeom::EPS) {
-      add_line(center, AlgGeom::Point(-line.b, line.a), source.lines[i].visible);
+      add_line(
+        center, AlgGeom::Point(-line.b, line.a), source.lines[i].visible,
+        source.lines[i].color, source.lines[i].thickness, source.lines[i].dashed
+      );
     } else {
       const AlgGeom::Point closest = AlgGeom::CoreGeometryTools::project_point_to_line(center, line);
       const AlgGeom::Point image = AlgGeom::CoreGeometryTools::inversion_point(
@@ -671,6 +761,9 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
         AlgGeom::CoreGeometryTools::dist_points(inverted_center, center)
       ));
       this->circles.back().visible = source.lines[i].visible;
+      this->circles.back().color = source.lines[i].color;
+      this->circles.back().thickness = source.lines[i].thickness;
+      this->circles.back().dashed = source.lines[i].dashed;
       this->circles.back().index = this->circles.size() - 1;
     }
   }
@@ -690,7 +783,10 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
         center.x + offset.x * radius_squared / (2 * offset_squared),
         center.y + offset.y * radius_squared / (2 * offset_squared)
       );
-      add_line(point, AlgGeom::Point(-offset.y, offset.x), source.circles[i].visible);
+      add_line(
+        point, AlgGeom::Point(-offset.y, offset.x), source.circles[i].visible,
+        source.circles[i].color, source.circles[i].thickness, source.circles[i].dashed
+      );
     } else {
       const ld factor = radius_squared / denominator;
       this->circles.push_back(GCircle(
@@ -699,6 +795,9 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
         abs(factor) * source_radius
       ));
       this->circles.back().visible = source.circles[i].visible;
+      this->circles.back().color = source.circles[i].color;
+      this->circles.back().thickness = source.circles[i].thickness;
+      this->circles.back().dashed = source.circles[i].dashed;
       this->circles.back().index = this->circles.size() - 1;
     }
   }
@@ -907,6 +1006,22 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     const int conic_search = this->conic_searcher(_p);
     const int text_search = this->text_searcher(_p);
 
+    if (event.mouseButton.button == sf::Mouse::Right) {
+      if (index_search != -1) {
+        this->style_request = {"Point", index_search, {event.mouseButton.x, event.mouseButton.y}};
+      } else if (line_search != -1) {
+        this->style_request = {"Line", line_search, {event.mouseButton.x, event.mouseButton.y}};
+      } else if (circle_search != -1) {
+        this->style_request = {"Circle", circle_search, {event.mouseButton.x, event.mouseButton.y}};
+      } else if (conic_search != -1) {
+        this->style_request = {"Conic", conic_search, {event.mouseButton.x, event.mouseButton.y}};
+      } else {
+        return;
+      }
+      this->style_request_pending = true;
+      return;
+    }
+
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 0) {
       this->selected_text = text_search;
       this->selected_point = text_search == -1 ? index_search : -1;
@@ -923,7 +1038,9 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
         this->follower = -1;
       } else if (index_search != -1 &&
                  (this->protocol.is_point_def_by_func(index_search, "newPoint") ||
-                  this->protocol.is_point_def_by_func(index_search, "newPointOnLine"))) {
+                  this->protocol.is_point_def_by_func(index_search, "newPointOnLine") ||
+                  this->protocol.is_point_def_by_func(index_search, "newPointOnCircle") ||
+                  this->protocol.is_point_def_by_func(index_search, "newPointOnConic"))) {
         this->isDragging = true;
         this->follower = index_search;
         this->isDraggingText = false;
@@ -943,8 +1060,8 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     }
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 1) {
       if (index_search == -1) {
-        this->points.push_back(p);
         if (line_search != -1) {
+          this->points.push_back(p);
           ld ratio_value = AlgGeom::CoreGeometryTools::get_point_on_line_ratio(
             AlgGeom::Point(
               this->lines[line_search].x1,
@@ -957,7 +1074,26 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
             AlgGeom::Point(p.x_pos, p.y_pos)
           );
           protocol.new_point_on_line(this->points.size() - 1, line_search, ratio_value);
+        } else if (circle_search != -1) {
+          this->points.push_back(p);
+          const ld angle = atan2(
+            p.y_pos - this->circles[circle_search].y_pos,
+            p.x_pos - this->circles[circle_search].x_pos
+          );
+          protocol.new_point_on_circle(this->points.size() - 1, circle_search, angle);
+        } else if (conic_search != -1) {
+          const GConic &conic = this->conics[conic_search];
+          AlgGeom::Point projected;
+          if (AlgGeom::CoreGeometryTools::project_point_to_conic(
+                AlgGeom::Point(world.x, world.y),
+                AlgGeom::Conic(conic.A, conic.B, conic.C, conic.D, conic.E, conic.F), projected)) {
+            this->points.push_back(GPoint(projected.x, projected.y));
+            protocol.new_point_on_conic(
+              this->points.size() - 1, conic_search, projected.x, projected.y
+            );
+          }
         } else {
+          this->points.push_back(p);
           protocol.new_point(this->points.size() - 1, p.x_pos, p.y_pos);
         }
       }
@@ -1248,6 +1384,21 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
         new_loc
       );
       this->protocol.protocol["Point"][follower]["args"][1] = ratio_value;
+    } else if (this->protocol.is_point_def_by_func(follower, "newPointOnCircle")) {
+      const int circle_index = this->protocol.get_point_info(follower)["args"][0];
+      this->protocol.protocol["Point"][follower]["args"][1] = atan2(
+        mousePos.y - this->circles[circle_index].y_pos,
+        mousePos.x - this->circles[circle_index].x_pos
+      );
+    } else if (this->protocol.is_point_def_by_func(follower, "newPointOnConic")) {
+      const int conic_index = this->protocol.get_point_info(follower)["args"][0];
+      const GConic &conic = this->conics[conic_index];
+      AlgGeom::Point projected;
+      if (AlgGeom::CoreGeometryTools::project_point_to_conic(
+            AlgGeom::Point(mousePos.x, mousePos.y),
+            AlgGeom::Conic(conic.A, conic.B, conic.C, conic.D, conic.E, conic.F), projected)) {
+        this->protocol.protocol["Point"][follower]["location"] = {projected.x, projected.y};
+      }
     } else {
       this->protocol.edit_position(follower, mousePos.x, mousePos.y);
     }
@@ -1736,34 +1887,98 @@ void GeometryVisual::draw(sf::RenderWindow& window, const sf::Font *font) {
   window.setView(this->camera_view);
   for (int i = 0; i < this->points.size(); ++i) {
     if (!this->points[i].visible) continue;
-    if (i == this->selected_point) {
-      this->points[i].shape.setOutlineColor(sf::Color::Black);
-      this->points[i].shape.setOutlineThickness(3);
-    } else {
-      this->points[i].shape.setOutlineThickness(0);
-    }
+    const float radius = 4 + this->points[i].thickness;
+    this->points[i].shape.setRadius(radius);
+    this->points[i].shape.setPosition(this->points[i].x_pos - radius, this->points[i].y_pos - radius);
+    this->points[i].shape.setFillColor(this->points[i].color);
+    this->points[i].shape.setOutlineColor(sf::Color::Black);
+    this->points[i].shape.setOutlineThickness(i == this->selected_point ? 3 : 0);
     this->points[i].draw(window);
   }
   for (int i = 0; i < this->lines.size(); ++i) {
-    if (!this->lines[i].visible) continue;
-    const sf::Color color = i == this->selected_line
-      ? sf::Color::Black
-      : (this->lines[i].line_type == 2 ? sf::Color(238, 130, 238) : sf::Color::Blue);
-    for (size_t j = 0; j < this->lines[i].line.getVertexCount(); ++j) {
-      this->lines[i].line[j].color = color;
+    GLine &line = this->lines[i];
+    if (!line.visible) continue;
+    const sf::Color line_color = i == this->selected_line ? sf::Color::Black : line.color;
+    if (abs(line.thickness - 1.f) < 1e-5f && line.dashed == (line.line_type == 2)) {
+      for (size_t vertex = 0; vertex < line.line.getVertexCount(); ++vertex) {
+        line.line[vertex].color = line_color;
+      }
+      line.draw(window);
+      continue;
     }
-    this->lines[i].draw(window);
+    sf::Vector2f start(line.x1, line.y1);
+    sf::Vector2f end(line.x2, line.y2);
+    if (line.line_type != 0) {
+      sf::Vector2f direction = end - start;
+      const float length = sqrt(direction.x * direction.x + direction.y * direction.y);
+      if (length < 1e-5f) continue;
+      direction /= length;
+      const sf::Vector2f midpoint = (start + end) / 2.f;
+      start = midpoint - direction * 5000.f;
+      end = midpoint + direction * 5000.f;
+    }
+    sf::VertexArray stroke(sf::Quads);
+    append_styled_line(
+      stroke, start, end, line.thickness * this->camera_zoom,
+      line_color,
+      line.dashed, this->camera_zoom
+    );
+    window.draw(stroke);
   }
   for (int i = 0; i < this->circles.size(); ++i) {
-    if (!this->circles[i].visible) continue;
-    this->circles[i].shape.setOutlineColor(
-      i == this->selected_circle ? sf::Color::Black : sf::Color::Green
-    );
-    this->circles[i].shape.setOutlineThickness(i == this->selected_circle ? 3 : 1);
-    this->circles[i].draw(window);
+    GCircle &circle = this->circles[i];
+    if (!circle.visible) continue;
+    const sf::Color color = i == this->selected_circle ? sf::Color::Black : circle.color;
+    const float thickness = std::max(circle.thickness, i == this->selected_circle ? 3.f : 1.f);
+    if (!circle.dashed) {
+      circle.shape.setRadius(circle.radius);
+      circle.shape.setPosition(circle.x_pos - circle.radius, circle.y_pos - circle.radius);
+      circle.shape.setFillColor(sf::Color::Transparent);
+      circle.shape.setOutlineColor(color);
+      circle.shape.setOutlineThickness(thickness);
+      circle.draw(window);
+    } else {
+      sf::VertexArray stroke(sf::Quads);
+      const int segments = 160;
+      for (int segment = 0; segment < segments; ++segment) {
+        if (segment % 10 >= 6) continue;
+        const float a1 = 2 * 3.14159265358979323846f * segment / segments;
+        const float a2 = 2 * 3.14159265358979323846f * (segment + 1) / segments;
+        append_stroke_segment(
+          stroke,
+          sf::Vector2f(circle.x_pos + circle.radius * cos(a1), circle.y_pos + circle.radius * sin(a1)),
+          sf::Vector2f(circle.x_pos + circle.radius * cos(a2), circle.y_pos + circle.radius * sin(a2)),
+          thickness * this->camera_zoom, color
+        );
+      }
+      window.draw(stroke);
+    }
   }
-  for (auto& conic : this->conics) {
-    if (conic.visible) conic.draw(window);
+  for (GConic &conic : this->conics) {
+    if (!conic.visible) continue;
+    if (abs(conic.thickness - 1.f) < 1e-5f && !conic.dashed) {
+      for (size_t vertex = 0; vertex < conic.branch1.getVertexCount(); ++vertex) {
+        conic.branch1[vertex].color = conic.color;
+      }
+      for (size_t vertex = 0; vertex < conic.branch2.getVertexCount(); ++vertex) {
+        conic.branch2[vertex].color = conic.color;
+      }
+      conic.draw(window);
+      continue;
+    }
+    sf::VertexArray stroke(sf::Quads);
+    auto append_branch = [&](const sf::VertexArray &branch) {
+      for (size_t i = 0; i + 1 < branch.getVertexCount(); i += 2) {
+        if (conic.dashed && (i / 2 / 12) % 2 == 1) continue;
+        append_stroke_segment(
+          stroke, branch[i].position, branch[i + 1].position,
+          conic.thickness * this->camera_zoom, conic.color
+        );
+      }
+    };
+    append_branch(conic.branch1);
+    append_branch(conic.branch2);
+    window.draw(stroke);
   }
   for (auto& cubic : this->cubics) {
     cubic.draw(window);

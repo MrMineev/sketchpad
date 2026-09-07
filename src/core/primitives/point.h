@@ -10,6 +10,8 @@ public:
   std::string label;
   bool visible = true;
   bool label_visible = true;
+  sf::Color color = sf::Color::Red;
+  float thickness = 1;
 
   GPoint(float x, float y) {
     x_pos = x;
