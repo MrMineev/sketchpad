@@ -26,6 +26,7 @@ class Protocol {
   void new_angle_bisector(int pos, int x, int y, int z);
   void new_reflect_line_over_line(int pos, int x, int y);
   void new_isogonal_conjugate(int pos, int x, int y, int z, int w);
+  void new_isotomic_conjugate(int pos, int x, int y, int z, int w);
   void new_reflect_point_over_line(int pos, int x, int y);
   void new_reflect_point_over_point(int pos, int x, int y);
   void new_project_point_onto_line(int pos, int point, int line);
@@ -38,6 +39,13 @@ class Protocol {
   void new_perp_normal(int pos, int x, int y);
   void new_parallel(int pos, int x, int y);
   void new_inter_ll(int pos, int x, int y);
+  void new_general_intersection(int pos, std::string type1, int index1,
+                                std::string type2, int index2, int branch);
+  void new_tangent_from_point(int pos, int point, int circle, int branch);
+  void new_common_tangent(int pos, int circle1, int circle2, int branch);
+  void new_polar(int pos, int point, std::string source_type, int source);
+  void new_radical_axis(int pos, int circle1, int circle2);
+  void new_radical_center(int pos, int circle1, int circle2, int circle3);
   void new_line(int pos, int x, int y, int state); // state = 2 (dashed)
   void new_circle(int pos, int x, int y);
   void new_conic(int pos, int x1, int x2, int x3, int x4, int x5);

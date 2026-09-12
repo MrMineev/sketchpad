@@ -131,6 +131,25 @@ static std::vector<AnnotationRun> math_runs(const std::string &source) {
   return runs;
 }
 
+static GLine graphical_line(AlgGeom::Line line, bool valid) {
+  if (!valid) return GLine(0, 0, 0, 0, 0);
+  const ld norm = sqrt(line.a * line.a + line.b * line.b);
+  if (norm < AlgGeom::EPS) return GLine(0, 0, 0, 0, 0);
+  AlgGeom::Point anchor;
+  if (abs(line.b) >= abs(line.a)) {
+    anchor = AlgGeom::Point(0, -line.c / line.b);
+  } else {
+    anchor = AlgGeom::Point(-line.c / line.a, 0);
+  }
+  const AlgGeom::Point direction(-line.b / norm, line.a / norm);
+  GLine result(
+    anchor.x - direction.x * 5000, anchor.y - direction.y * 5000,
+    anchor.x + direction.x * 5000, anchor.y + direction.y * 5000, 0
+  );
+  result.line_type = 1;
+  return result;
+}
+
 static void append_stroke_segment(sf::VertexArray &vertices, sf::Vector2f start,
                                   sf::Vector2f end, float thickness, sf::Color color) {
   const sf::Vector2f direction = end - start;
@@ -501,6 +520,18 @@ void GeometryVisual::rebuild() {
       );
       // this->points[p] = GPoint(new_loc.x, new_loc.y);
       this->points.push_back(GPoint(new_loc.x, new_loc.y));
+    } else if (command_type == "newIsotomicConjugate") {
+      int p1 = information_command["args"][0];
+      int p2 = information_command["args"][1];
+      int p3 = information_command["args"][2];
+      int p4 = information_command["args"][3];
+      AlgGeom::Point result;
+      if (!AlgGeom::CoreGeometryTools::isotomic_conjugate(
+            convert_gpoint(this->points[p1]), convert_gpoint(this->points[p2]),
+            convert_gpoint(this->points[p3]), convert_gpoint(this->points[p4]), result)) {
+        result = convert_gpoint(this->points[p4]);
+      }
+      this->points.push_back(GPoint(result.x, result.y));
     } else if (command_type == "newReflectPointOverLine") {
       int p1 = information_command["args"][0];
       int p2 = information_command["args"][1];
@@ -533,6 +564,128 @@ void GeometryVisual::rebuild() {
         AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos)
       );
       this->points.push_back(GPoint(p.x, p.y));
+    } else if (command_type == "newGeneralIntersection") {
+      const std::string type1 = information_command["source_types"][0];
+      const std::string type2 = information_command["source_types"][1];
+      const int index1 = information_command["args"][0];
+      const int index2 = information_command["args"][1];
+      const int branch = information_command["branch"];
+      auto line = [&](int i) {
+        return AlgGeom::Line(
+          AlgGeom::Point(this->lines[i].x1, this->lines[i].y1),
+          AlgGeom::Point(this->lines[i].x2, this->lines[i].y2)
+        );
+      };
+      auto circle = [&](int i) {
+        return AlgGeom::Circle(
+          AlgGeom::Point(this->circles[i].x_pos, this->circles[i].y_pos), this->circles[i].radius
+        );
+      };
+      auto conic = [&](int i) {
+        const GConic &value = this->conics[i];
+        return AlgGeom::Conic(value.A, value.B, value.C, value.D, value.E, value.F);
+      };
+      vector<AlgGeom::Point> intersections;
+      if (type1 == "Line" && type2 == "Line") {
+        intersections = AlgGeom::CoreGeometryTools::inter_line_line(line(index1), line(index2));
+      } else if (type1 == "Line" && type2 == "Circle") {
+        intersections = AlgGeom::CoreGeometryTools::inter_line_conic(
+          line(index1), AlgGeom::CoreGeometryTools::circle_as_conic(circle(index2))
+        );
+      } else if (type1 == "Circle" && type2 == "Line") {
+        intersections = AlgGeom::CoreGeometryTools::inter_line_conic(
+          line(index2), AlgGeom::CoreGeometryTools::circle_as_conic(circle(index1))
+        );
+      } else if (type1 == "Circle" && type2 == "Circle") {
+        intersections = AlgGeom::CoreGeometryTools::inter_circle_circle(circle(index1), circle(index2));
+      } else if (type1 == "Line" && type2 == "Conic") {
+        intersections = AlgGeom::CoreGeometryTools::inter_line_conic(line(index1), conic(index2));
+      } else if (type1 == "Conic" && type2 == "Line") {
+        intersections = AlgGeom::CoreGeometryTools::inter_line_conic(line(index2), conic(index1));
+      } else if (type1 == "Circle" && type2 == "Conic") {
+        intersections = AlgGeom::CoreGeometryTools::inter_circle_conic(circle(index1), conic(index2));
+      } else if (type1 == "Conic" && type2 == "Circle") {
+        intersections = AlgGeom::CoreGeometryTools::inter_circle_conic(circle(index2), conic(index1));
+      } else if (type1 == "Conic" && type2 == "Conic") {
+        intersections = AlgGeom::CoreGeometryTools::inter_conic_conic(conic(index1), conic(index2));
+      }
+      const bool valid = branch >= 0 && branch < intersections.size();
+      const AlgGeom::Point point = valid ? intersections[branch] : AlgGeom::Point(0, 0);
+      this->points.push_back(GPoint(point.x, point.y));
+      this->protocol.protocol[return_type][index]["valid"] = valid;
+    } else if (command_type == "newTangentFromPoint") {
+      const int point = information_command["args"][0];
+      const int circle_index = information_command["args"][1];
+      AlgGeom::Line tangent;
+      const bool valid = AlgGeom::CoreGeometryTools::tangent_from_point(
+        convert_gpoint(this->points[point]),
+        AlgGeom::Circle(
+          AlgGeom::Point(this->circles[circle_index].x_pos, this->circles[circle_index].y_pos),
+          this->circles[circle_index].radius
+        ), information_command["branch"], tangent
+      );
+      this->lines.push_back(graphical_line(tangent, valid));
+      this->protocol.protocol[return_type][index]["valid"] = valid;
+    } else if (command_type == "newCommonTangent") {
+      const int first = information_command["args"][0];
+      const int second = information_command["args"][1];
+      AlgGeom::Line tangent;
+      const bool valid = AlgGeom::CoreGeometryTools::common_tangent(
+        AlgGeom::Circle(AlgGeom::Point(this->circles[first].x_pos, this->circles[first].y_pos),
+                        this->circles[first].radius),
+        AlgGeom::Circle(AlgGeom::Point(this->circles[second].x_pos, this->circles[second].y_pos),
+                        this->circles[second].radius),
+        information_command["branch"], tangent
+      );
+      this->lines.push_back(graphical_line(tangent, valid));
+      this->protocol.protocol[return_type][index]["valid"] = valid;
+    } else if (command_type == "newPolar") {
+      const int point = information_command["args"][0];
+      const int source = information_command["args"][1];
+      const std::string source_type = information_command["source_type"];
+      AlgGeom::Conic conic;
+      if (source_type == "Circle") {
+        const GCircle &circle = this->circles[source];
+        conic = AlgGeom::CoreGeometryTools::circle_as_conic(
+          AlgGeom::Circle(AlgGeom::Point(circle.x_pos, circle.y_pos), circle.radius)
+        );
+      } else {
+        const GConic &value = this->conics[source];
+        conic = AlgGeom::Conic(value.A, value.B, value.C, value.D, value.E, value.F);
+      }
+      AlgGeom::Line polar;
+      const bool valid = AlgGeom::CoreGeometryTools::polar_line(
+        convert_gpoint(this->points[point]), conic, polar
+      );
+      this->lines.push_back(graphical_line(polar, valid));
+      this->protocol.protocol[return_type][index]["valid"] = valid;
+    } else if (command_type == "newRadicalAxis") {
+      const int first = information_command["args"][0];
+      const int second = information_command["args"][1];
+      AlgGeom::Line axis;
+      const bool valid = AlgGeom::CoreGeometryTools::radical_axis(
+        AlgGeom::Circle(AlgGeom::Point(this->circles[first].x_pos, this->circles[first].y_pos),
+                        this->circles[first].radius),
+        AlgGeom::Circle(AlgGeom::Point(this->circles[second].x_pos, this->circles[second].y_pos),
+                        this->circles[second].radius), axis
+      );
+      this->lines.push_back(graphical_line(axis, valid));
+      this->protocol.protocol[return_type][index]["valid"] = valid;
+    } else if (command_type == "newRadicalCenter") {
+      const int first = information_command["args"][0];
+      const int second = information_command["args"][1];
+      const int third = information_command["args"][2];
+      auto circle = [&](int i) {
+        return AlgGeom::Circle(
+          AlgGeom::Point(this->circles[i].x_pos, this->circles[i].y_pos), this->circles[i].radius
+        );
+      };
+      AlgGeom::Point center;
+      const bool valid = AlgGeom::CoreGeometryTools::radical_center(
+        circle(first), circle(second), circle(third), center
+      );
+      this->points.push_back(GPoint(valid ? center.x : 0, valid ? center.y : 0));
+      this->protocol.protocol[return_type][index]["valid"] = valid;
     } else if (command_type == "newCenter") {
       const int source = information_command["args"][0];
       const std::string source_type = information_command["source_type"];
@@ -558,7 +711,7 @@ void GeometryVisual::rebuild() {
     this->points[i].index = i;
     const json &point = this->protocol.protocol["Point"][i];
     this->points[i].label = point.value("label", "");
-    this->points[i].visible = point.value("visible", true);
+    this->points[i].visible = point.value("visible", true) && point.value("valid", true);
     this->points[i].label_visible = point.value("label_visible", true);
     this->points[i].color = protocol_color(point, sf::Color::Red);
     this->points[i].thickness = point.value("thickness", 1.f);
@@ -566,7 +719,7 @@ void GeometryVisual::rebuild() {
   for (int i = 0; i < this->lines.size(); ++i) {
     this->lines[i].index = i;
     const json &line = this->protocol.protocol["Line"][i];
-    this->lines[i].visible = line.value("visible", true);
+    this->lines[i].visible = line.value("visible", true) && line.value("valid", true);
     this->lines[i].color = protocol_color(line, sf::Color::Blue);
     this->lines[i].thickness = line.value("thickness", 1.f);
     this->lines[i].dashed = line.value("dashed", false);
@@ -601,6 +754,7 @@ void GeometryVisual::delete_object(std::string type, int index) {
   this->selected_point = -1;
   this->selected_line = -1;
   this->selected_circle = -1;
+  this->selected_conic = -1;
   this->selected_text = -1;
   this->follower = -1;
   this->text_follower = -1;
@@ -625,6 +779,11 @@ void GeometryVisual::delete_circle(int index) {
   this->delete_object("Circle", index);
 }
 
+void GeometryVisual::delete_conic(int index) {
+  if (index < 0 || index >= this->conics.size()) return;
+  this->delete_object("Conic", index);
+}
+
 void GeometryVisual::hide_geo_genie() {
   this->protocol.delete_searcher_objects();
   this->live_stack.clear();
@@ -633,6 +792,7 @@ void GeometryVisual::hide_geo_genie() {
   this->selected_point = -1;
   this->selected_line = -1;
   this->selected_circle = -1;
+  this->selected_conic = -1;
   this->selected_text = -1;
   this->follower = -1;
   this->text_follower = -1;
@@ -894,6 +1054,7 @@ bool GeometryVisual::handleCameraEvent(const sf::Event& event, sf::RenderWindow&
       this->selected_point = -1;
       this->selected_line = -1;
       this->selected_circle = -1;
+      this->selected_conic = -1;
       return true;
     }
   }
@@ -988,6 +1149,7 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       this->selected_point = -1;
       this->selected_line = -1;
       this->selected_circle = -1;
+      this->selected_conic = -1;
       this->selected_text = -1;
       this->isDragging = false;
       this->isDraggingText = false;
@@ -1005,6 +1167,11 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     auto [line_search, circle_search] = _object_search;
     const int conic_search = this->conic_searcher(_p);
     const int text_search = this->text_searcher(_p);
+    std::pair<std::string, int> clicked_object = {"", -1};
+    if (index_search != -1) clicked_object = {"Point", index_search};
+    else if (line_search != -1) clicked_object = {"Line", line_search};
+    else if (circle_search != -1) clicked_object = {"Circle", circle_search};
+    else if (conic_search != -1) clicked_object = {"Conic", conic_search};
 
     if (event.mouseButton.button == sf::Mouse::Right) {
       if (index_search != -1) {
@@ -1028,6 +1195,8 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       this->selected_line = text_search == -1 && index_search == -1 ? line_search : -1;
       this->selected_circle = text_search == -1 && index_search == -1 && line_search == -1
         ? circle_search : -1;
+      this->selected_conic = text_search == -1 && index_search == -1 && line_search == -1 &&
+                             circle_search == -1 ? conic_search : -1;
       if (text_search != -1) {
         this->isDraggingText = true;
         this->text_follower = text_search;
@@ -1291,11 +1460,16 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       this->live_stack.push_back(p);
     }
     if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 25 && index_search != -1 &&
+        this->live_stack.size() < 4) {
+      p.index = index_search;
+      this->live_stack.push_back(p);
+    }
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 26 && index_search != -1 &&
         this->live_stack.size() < 3) {
       p.index = index_search;
       this->live_stack.push_back(p);
     }
-    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 26) {
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 27) {
       AlgGeom::Point center;
       std::string source_type;
       int source = -1;
@@ -1316,11 +1490,11 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
         this->protocol.new_center(this->points.size() - 1, source_type, source);
       }
     }
-    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 27) {
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 28) {
       this->text_request_position = world;
       this->text_request_pending = true;
     }
-    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 28) {
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 29) {
       if (text_search != -1) {
         this->protocol.set_visibility("Text", text_search, false);
       } else if (index_search != -1) {
@@ -1335,15 +1509,104 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
       this->selected_point = -1;
       this->selected_line = -1;
       this->selected_circle = -1;
+      this->selected_conic = -1;
       this->selected_text = -1;
       this->rebuild();
     }
-    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 29 && index_search != -1) {
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 30 && index_search != -1) {
       this->protocol.set_point_label_visibility(index_search, false);
       this->rebuild();
     }
-    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 30 && index_search != -1) {
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool == 31 && index_search != -1) {
       this->rename_point_request = index_search;
+    }
+    if (event.mouseButton.button == sf::Mouse::Left && this->current_tool >= 32 &&
+        this->current_tool <= 37 && clicked_object.second != -1) {
+      if (this->live_object_tool != this->current_tool) {
+        this->live_object_stack.clear();
+        this->live_object_tool = this->current_tool;
+      }
+      auto count_type = [&](const std::string &type) {
+        return std::count_if(this->live_object_stack.begin(), this->live_object_stack.end(),
+                             [&](const auto &object) { return object.first == type; });
+      };
+      bool allowed = false;
+      if (this->current_tool == 32) {
+        allowed = clicked_object.first == "Line" || clicked_object.first == "Circle" ||
+                  clicked_object.first == "Conic";
+      } else if (this->current_tool == 33) {
+        allowed = (clicked_object.first == "Point" && count_type("Point") == 0) ||
+                  (clicked_object.first == "Circle" && count_type("Circle") == 0);
+      } else if (this->current_tool == 34 || this->current_tool == 36 || this->current_tool == 37) {
+        allowed = clicked_object.first == "Circle";
+      } else if (this->current_tool == 35) {
+        allowed = (clicked_object.first == "Point" && count_type("Point") == 0) ||
+                  ((clicked_object.first == "Circle" || clicked_object.first == "Conic") &&
+                   count_type("Circle") + count_type("Conic") == 0);
+      }
+      if (allowed && std::find(this->live_object_stack.begin(), this->live_object_stack.end(),
+                               clicked_object) == this->live_object_stack.end()) {
+        this->live_object_stack.push_back(clicked_object);
+      }
+
+      const int required = this->current_tool == 37 ? 3 : 2;
+      if (this->live_object_stack.size() == required) {
+        if (this->current_tool == 32) {
+          const auto &first = this->live_object_stack[0];
+          const auto &second = this->live_object_stack[1];
+          int branches = 4;
+          if (first.first == "Line" && second.first == "Line") branches = 1;
+          else if ((first.first == "Line" && second.first != "Conic") ||
+                   (second.first == "Line" && first.first != "Conic") ||
+                   (first.first == "Line" && second.first == "Conic") ||
+                   (second.first == "Line" && first.first == "Conic") ||
+                   (first.first == "Circle" && second.first == "Circle")) branches = 2;
+          const int start = this->points.size();
+          for (int branch = 0; branch < branches; ++branch) {
+            this->protocol.new_general_intersection(
+              start + branch, first.first, first.second, second.first, second.second, branch
+            );
+          }
+        } else if (this->current_tool == 33) {
+          const auto point = count_type("Point") == 1
+            ? *std::find_if(this->live_object_stack.begin(), this->live_object_stack.end(),
+                            [](const auto &object) { return object.first == "Point"; })
+            : std::pair<std::string, int>("", -1);
+          const auto circle = *std::find_if(this->live_object_stack.begin(), this->live_object_stack.end(),
+                                            [](const auto &object) { return object.first == "Circle"; });
+          const int start = this->lines.size();
+          this->protocol.new_tangent_from_point(start, point.second, circle.second, 0);
+          this->protocol.new_tangent_from_point(start + 1, point.second, circle.second, 1);
+        } else if (this->current_tool == 34) {
+          const int start = this->lines.size();
+          for (int branch = 0; branch < 4; ++branch) {
+            this->protocol.new_common_tangent(
+              start + branch, this->live_object_stack[0].second,
+              this->live_object_stack[1].second, branch
+            );
+          }
+        } else if (this->current_tool == 35) {
+          const auto point = *std::find_if(this->live_object_stack.begin(), this->live_object_stack.end(),
+                                           [](const auto &object) { return object.first == "Point"; });
+          const auto source = *std::find_if(this->live_object_stack.begin(), this->live_object_stack.end(),
+                                            [](const auto &object) { return object.first != "Point"; });
+          this->protocol.new_polar(
+            this->lines.size(), point.second, source.first, source.second
+          );
+        } else if (this->current_tool == 36) {
+          this->protocol.new_radical_axis(
+            this->lines.size(), this->live_object_stack[0].second,
+            this->live_object_stack[1].second
+          );
+        } else if (this->current_tool == 37) {
+          this->protocol.new_radical_center(
+            this->points.size(), this->live_object_stack[0].second,
+            this->live_object_stack[1].second, this->live_object_stack[2].second
+          );
+        }
+        this->live_object_stack.clear();
+        this->rebuild();
+      }
     }
   }
   if (event.type == sf::Event::MouseButtonReleased) {
@@ -1852,7 +2115,21 @@ cout << "points " << this->live_stack[4].x_pos << " " << this->live_stack[4].y_p
     this->live_stack.clear();
   }
 
-  if (this->current_tool == 25 && this->live_stack.size() == 3) {
+  if (this->current_tool == 25 && this->live_stack.size() == 4) {
+    AlgGeom::Point conjugate;
+    if (AlgGeom::CoreGeometryTools::isotomic_conjugate(
+          convert_gpoint(this->live_stack[0]), convert_gpoint(this->live_stack[1]),
+          convert_gpoint(this->live_stack[2]), convert_gpoint(this->live_stack[3]), conjugate)) {
+      this->points.push_back(GPoint(conjugate.x, conjugate.y));
+      this->protocol.new_isotomic_conjugate(
+        this->points.size() - 1, this->live_stack[0].index, this->live_stack[1].index,
+        this->live_stack[2].index, this->live_stack[3].index
+      );
+    }
+    this->live_stack.clear();
+  }
+
+  if (this->current_tool == 26 && this->live_stack.size() == 3) {
     AlgGeom::Conic conic;
     if (AlgGeom::CoreGeometryTools::rectangular_hyperbola(
           convert_gpoint(this->live_stack[0]), convert_gpoint(this->live_stack[1]),
@@ -1877,6 +2154,8 @@ cout << "points " << this->live_stack[4].x_pos << " " << this->live_stack[4].y_p
       this->delete_line(this->selected_line);
     } else if (this->selected_circle != -1) {
       this->delete_circle(this->selected_circle);
+    } else if (this->selected_conic != -1) {
+      this->delete_conic(this->selected_conic);
     }
   }
 }
@@ -1954,14 +2233,16 @@ void GeometryVisual::draw(sf::RenderWindow& window, const sf::Font *font) {
       window.draw(stroke);
     }
   }
-  for (GConic &conic : this->conics) {
+  for (int conic_index = 0; conic_index < this->conics.size(); ++conic_index) {
+    GConic &conic = this->conics[conic_index];
     if (!conic.visible) continue;
+    const sf::Color conic_color = conic_index == this->selected_conic ? sf::Color::Black : conic.color;
     if (abs(conic.thickness - 1.f) < 1e-5f && !conic.dashed) {
       for (size_t vertex = 0; vertex < conic.branch1.getVertexCount(); ++vertex) {
-        conic.branch1[vertex].color = conic.color;
+        conic.branch1[vertex].color = conic_color;
       }
       for (size_t vertex = 0; vertex < conic.branch2.getVertexCount(); ++vertex) {
-        conic.branch2[vertex].color = conic.color;
+        conic.branch2[vertex].color = conic_color;
       }
       conic.draw(window);
       continue;
@@ -1972,7 +2253,7 @@ void GeometryVisual::draw(sf::RenderWindow& window, const sf::Font *font) {
         if (conic.dashed && (i / 2 / 12) % 2 == 1) continue;
         append_stroke_segment(
           stroke, branch[i].position, branch[i + 1].position,
-          conic.thickness * this->camera_zoom, conic.color
+          conic.thickness * this->camera_zoom, conic_color
         );
       }
     };

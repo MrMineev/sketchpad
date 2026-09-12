@@ -14,23 +14,25 @@ Sketchpad currently supports:
 - Segments and full lines
 - Circles defined by two or three points
 - Midpoints
-- Line-line and line-circle intersections
+- Generalized intersections among lines, circles, and conics
+- Tangents from a point to a circle and common tangents of two circles
+- Polar lines, radical axes, and radical centers
 - Perpendicular and parallel lines
 - Angle bisectors
 - Point and line reflections
 - Incenter, excenter, circumcenter, and central-conic center constructions
-- Numbered triangle centers `X(1)` through `X(10)`
+- Numbered triangle centers `X(1)` through `X(100)`
 - Conics through five points
 - Rectangular hyperbolas defined by a center and two points
 - Cubics through nine points
-- Isogonal conjugates
+- Isogonal and isotomic conjugates
 - Movable text annotations with inline math syntax
 
 Constructions are stored as dependencies rather than only rendered coordinates. Moving a defining point rebuilds every dependent object. Deleting an object also removes constructions that depend on it while preserving valid indices for the remaining diagram.
 
 ### Triangle centers
 
-The **Triangle Center** tool supports the first ten Encyclopedia of Triangle Centers entries:
+The **Triangle Center** tool supports Encyclopedia of Triangle Centers entries `X(1)` through `X(100)`. The first ten are:
 
 | Number | Center |
 | --- | --- |
@@ -45,7 +47,7 @@ The **Triangle Center** tool supports the first ten Encyclopedia of Triangle Cen
 | `X(9)` | Mittenpunkt |
 | `X(10)` | Spieker center |
 
-Select three triangle vertices, enter the desired number, and press **Enter**. Degenerate triangles are rejected.
+Select three triangle vertices, enter a number from 1 through 100, and press **Enter**. Degenerate triangles and centers whose value is at infinity for the selected triangle are rejected.
 
 ### GeoGenie
 
@@ -191,7 +193,7 @@ gui_assets/                  Fonts and GUI textures
 
 - Full-diagram inversion currently omits segments, conics, and cubics because their inverses are not generally represented by the existing exact primitive types.
 - Live inversion tabs are generated read-only views; edit their source tab to update them.
-- The numbered triangle-center catalog currently covers `X(1)` through `X(10)`.
+- The numbered triangle-center catalog covers `X(1)` through `X(100)`, but projective centers at infinity cannot be rendered as finite points.
 - Inline math uses a built-in LaTeX-like subset rather than a complete TeX engine; fractions are rendered in compact inline form.
 - Build configuration is currently macOS/Homebrew-oriented and may require path changes on other systems.
 - Sketchpad is under active development; malformed or degenerate constructions outside the guarded tools may still require additional handling.

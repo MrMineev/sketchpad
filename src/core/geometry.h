@@ -42,6 +42,8 @@ class GeometryVisual {
   std::vector<GPoint> live_stack;
   std::vector<GLine> live_stack_lines;
   std::vector<GCircle> live_stack_circles;
+  std::vector<std::pair<std::string, int>> live_object_stack;
+  int live_object_tool = -1;
 
   void delete_object(std::string type, int index);
   int text_searcher(GPoint point) const;
@@ -75,6 +77,7 @@ class GeometryVisual {
   int selected_point = -1;
   int selected_line = -1;
   int selected_circle = -1;
+  int selected_conic = -1;
   int selected_text = -1;
   int inversion_circle_request = -1;
   int rename_point_request = -1;
@@ -106,6 +109,7 @@ class GeometryVisual {
   void delete_point(int index);
   void delete_line(int index);
   void delete_circle(int index);
+  void delete_conic(int index);
   void hide_geo_genie();
   int take_inversion_request();
   int take_rename_point_request();

@@ -205,6 +205,16 @@ void Protocol::new_isogonal_conjugate(int pos, int x, int y, int z, int w) {
   this->protocol["order"].push_back({"Point", pos});
 }
 
+void Protocol::new_isotomic_conjugate(int pos, int x, int y, int z, int w) {
+  this->protocol["Point"][pos] = {
+    {"func", "newIsotomicConjugate"},
+    {"type", "Point"},
+    {"args", {x, y, z, w}}
+  };
+  this->initialize_point_metadata(pos);
+  this->protocol["order"].push_back({"Point", pos});
+}
+
 void Protocol::new_reflect_point_over_line(int pos, int x, int y) {
   this->protocol["Point"][pos] = {
     {"func", "newReflectPointOverLine"},
@@ -332,6 +342,57 @@ void Protocol::new_inter_ll(int pos, int x, int y) {
   this->protocol["order"].push_back({"Point", pos});
 }
 
+void Protocol::new_general_intersection(int pos, std::string type1, int index1,
+                                        std::string type2, int index2, int branch) {
+  this->protocol["Point"][pos] = {
+    {"func", "newGeneralIntersection"}, {"type", "Point"},
+    {"source_types", {type1, type2}}, {"args", {index1, index2}}, {"branch", branch}
+  };
+  this->initialize_point_metadata(pos);
+  this->protocol["order"].push_back({"Point", pos});
+}
+
+void Protocol::new_tangent_from_point(int pos, int point, int circle, int branch) {
+  this->protocol["Line"][pos] = {
+    {"func", "newTangentFromPoint"}, {"type", "Line"}, {"args", {point, circle}},
+    {"branch", branch}, {"version", 1}
+  };
+  this->protocol["order"].push_back({"Line", pos});
+}
+
+void Protocol::new_common_tangent(int pos, int circle1, int circle2, int branch) {
+  this->protocol["Line"][pos] = {
+    {"func", "newCommonTangent"}, {"type", "Line"}, {"args", {circle1, circle2}},
+    {"branch", branch}, {"version", 1}
+  };
+  this->protocol["order"].push_back({"Line", pos});
+}
+
+void Protocol::new_polar(int pos, int point, std::string source_type, int source) {
+  this->protocol["Line"][pos] = {
+    {"func", "newPolar"}, {"type", "Line"}, {"source_type", source_type},
+    {"args", {point, source}}, {"version", 1}
+  };
+  this->protocol["order"].push_back({"Line", pos});
+}
+
+void Protocol::new_radical_axis(int pos, int circle1, int circle2) {
+  this->protocol["Line"][pos] = {
+    {"func", "newRadicalAxis"}, {"type", "Line"}, {"args", {circle1, circle2}},
+    {"version", 1}
+  };
+  this->protocol["order"].push_back({"Line", pos});
+}
+
+void Protocol::new_radical_center(int pos, int circle1, int circle2, int circle3) {
+  this->protocol["Point"][pos] = {
+    {"func", "newRadicalCenter"}, {"type", "Point"},
+    {"args", {circle1, circle2, circle3}}
+  };
+  this->initialize_point_metadata(pos);
+  this->protocol["order"].push_back({"Point", pos});
+}
+
 void Protocol::new_line(int pos, int x, int y, int state) {
   this->protocol["Line"][pos] = {
     {"func", "newLine"},
@@ -452,6 +513,13 @@ void Protocol::delete_obj(std::string start_cat, int pos) {
     const std::string func = value["func"];
 
     if (func == "newCenter") return arg == 0 ? value.value("source_type", "") : "";
+    if (func == "newGeneralIntersection") {
+      return arg < 2 && value.contains("source_types") ? value["source_types"][arg].get<std::string>() : "";
+    }
+    if (func == "newTangentFromPoint") return arg == 0 ? "Point" : "Circle";
+    if (func == "newCommonTangent" || func == "newRadicalAxis" ||
+        func == "newRadicalCenter") return "Circle";
+    if (func == "newPolar") return arg == 0 ? "Point" : value.value("source_type", "");
     if (func == "newPointOnLine") return arg == 0 ? "Line" : "";
     if (func == "newPointOnCircle") return arg == 0 ? "Circle" : "";
     if (func == "newPointOnConic") return arg == 0 ? "Conic" : "";
@@ -466,7 +534,8 @@ void Protocol::delete_obj(std::string start_cat, int pos) {
         func == "newReflectPointOverPoint" ||
         func == "circumcircle" || func == "new_incenter" || func == "newCircumcenter" ||
         func == "new_excenter" ||
-        func == "newIsogonalConjugate" || func == "newConic" ||
+        func == "newIsogonalConjugate" || func == "newIsotomicConjugate" ||
+        func == "newConic" ||
         func == "newRectangularHyperbola" || func == "newCubic" ||
         func == "newAngleBisector") {
       return "Point";

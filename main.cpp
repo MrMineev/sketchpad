@@ -293,7 +293,7 @@ signed main() {
       } else if (!triangle_center_vertices.empty()) {
         tab_event = true;
         if (event.type == sf::Event::TextEntered && event.text.unicode >= '0' && event.text.unicode <= '9' &&
-            triangle_center_text.size() < 2) {
+            triangle_center_text.size() < 3) {
           triangle_center_text.push_back(static_cast<char>(event.text.unicode));
           triangle_center_error = false;
         }
@@ -306,7 +306,7 @@ signed main() {
           const int number = triangle_center_text.empty() ? 0 : std::stoi(triangle_center_text);
           GeometryVisual &geometry = *tabs[triangle_center_tab].geometry;
           AlgGeom::Point center;
-          const bool valid = number >= 1 && number <= 10 &&
+          const bool valid = number >= 1 && number <= 100 &&
             AlgGeom::CoreGeometryTools::triangle_center(
               number,
               AlgGeom::Point(geometry.points[triangle_center_vertices[0]].x_pos,
@@ -843,7 +843,7 @@ signed main() {
       sf::Text prompt_title;
       prompt_title.setFont(font);
       prompt_title.setString(triangle_center_error
-        ? "Enter a valid center X(1) through X(10)"
+        ? "Enter a valid center X(1) through X(100)"
         : "Triangle center number X(n) - Enter to create");
       prompt_title.setCharacterSize(15);
       prompt_title.setFillColor(sf::Color::Black);

@@ -411,6 +411,335 @@ static Cubic fitCubicThrough9(
     return AlgGeom::CoreGeometryTools::inter_lines(l, ll);
   }
 
+  static bool isotomic_conjugate(Point a, Point b, Point c, Point p, Point &result) {
+    const ld denominator = (b.y - c.y) * (a.x - c.x) +
+                           (c.x - b.x) * (a.y - c.y);
+    if (abs(denominator) < EPS) return false;
+    const ld x = ((b.y - c.y) * (p.x - c.x) +
+                  (c.x - b.x) * (p.y - c.y)) / denominator;
+    const ld y = ((c.y - a.y) * (p.x - c.x) +
+                  (a.x - c.x) * (p.y - c.y)) / denominator;
+    const ld z = 1 - x - y;
+    if (abs(x) < EPS || abs(y) < EPS || abs(z) < EPS) return false;
+    const ld wa = y * z;
+    const ld wb = z * x;
+    const ld wc = x * y;
+    const ld sum = wa + wb + wc;
+    if (abs(sum) < EPS) return false;
+    result = Point(
+      (wa * a.x + wb * b.x + wc * c.x) / sum,
+      (wa * a.y + wb * b.y + wc * c.y) / sum
+    );
+    return isfinite(result.x) && isfinite(result.y);
+  }
+
+  static void deduplicate_points(vector<Point> &points) {
+    vector<Point> unique;
+    for (const Point &point : points) {
+      bool duplicate = false;
+      for (const Point &other : unique) {
+        const ld scale = max<ld>(1, max(abs(point.x) + abs(point.y), abs(other.x) + abs(other.y)));
+        if (CoreGeometryTools::dist_points(point, other) <= 1e-7L * scale) {
+          duplicate = true;
+          break;
+        }
+      }
+      if (!duplicate && isfinite(point.x) && isfinite(point.y)) unique.push_back(point);
+    }
+    sort(unique.begin(), unique.end(), [](const Point &first, const Point &second) {
+      if (abs(first.x - second.x) > 1e-8L) return first.x < second.x;
+      return first.y < second.y;
+    });
+    points = unique;
+  }
+
+  static vector<ld> real_polynomial_roots(vector<ld> coefficients) {
+    ld scale = 0;
+    for (ld coefficient : coefficients) scale = max(scale, abs(coefficient));
+    if (scale < 1e-18L) return {};
+    while (coefficients.size() > 1 && abs(coefficients.back()) < scale * 1e-14L) {
+      coefficients.pop_back();
+    }
+    const int degree = static_cast<int>(coefficients.size()) - 1;
+    if (degree == 0) return {};
+    if (degree == 1) return {-coefficients[0] / coefficients[1]};
+    if (degree == 2) {
+      const ld a = coefficients[2];
+      const ld b = coefficients[1];
+      const ld c = coefficients[0];
+      ld discriminant = b * b - 4 * a * c;
+      const ld tolerance = 1e-14L * max<ld>(1, b * b + abs(4 * a * c));
+      if (discriminant < -tolerance) return {};
+      if (abs(discriminant) <= tolerance) return {-b / (2 * a)};
+      discriminant = sqrt(max<ld>(0, discriminant));
+      const ld q = -0.5L * (b + (b >= 0 ? discriminant : -discriminant));
+      vector<ld> roots = {q / a, c / q};
+      sort(roots.begin(), roots.end());
+      return roots;
+    }
+
+    const ld leading = coefficients.back();
+    ld radius = 1;
+    for (int i = 0; i < degree; ++i) radius = max(radius, 1 + abs(coefficients[i] / leading));
+    vector<cd> roots(degree);
+    const ld pi = acosl(-1.0L);
+    for (int i = 0; i < degree; ++i) {
+      roots[i] = polar(radius, 2 * pi * (i + 0.37L) / degree);
+    }
+    for (int iteration = 0; iteration < 2000; ++iteration) {
+      const vector<cd> previous = roots;
+      ld largest_change = 0;
+      for (int i = 0; i < degree; ++i) {
+        cd value = coefficients.back();
+        for (int j = degree - 1; j >= 0; --j) value = value * previous[i] + coefficients[j];
+        cd denominator = 1;
+        for (int j = 0; j < degree; ++j) {
+          if (i != j) denominator *= previous[i] - previous[j];
+        }
+        if (abs(denominator) < 1e-24L) denominator += cd(1e-18L, 1e-18L);
+        const cd change = value / denominator;
+        roots[i] = previous[i] - change;
+        largest_change = max(largest_change, abs(change));
+      }
+      if (largest_change < 1e-14L) break;
+    }
+    vector<ld> real_roots;
+    for (cd root : roots) {
+      if (abs(root.imag()) <= 1e-8L * max<ld>(1, abs(root.real()))) {
+        ld value = root.real();
+        for (int iteration = 0; iteration < 8; ++iteration) {
+          ld polynomial = coefficients.back();
+          ld derivative = degree * coefficients.back();
+          for (int i = degree - 1; i >= 1; --i) {
+            polynomial = polynomial * value + coefficients[i];
+            derivative = derivative * value + i * coefficients[i];
+          }
+          polynomial = polynomial * value + coefficients[0];
+          if (abs(derivative) < 1e-18L) break;
+          value -= polynomial / derivative;
+        }
+        real_roots.push_back(value);
+      }
+    }
+    sort(real_roots.begin(), real_roots.end());
+    real_roots.erase(unique(real_roots.begin(), real_roots.end(), [](ld first, ld second) {
+      return abs(first - second) <= 1e-7L * max<ld>(1, max(abs(first), abs(second)));
+    }), real_roots.end());
+    return real_roots;
+  }
+
+  static vector<Point> inter_line_line(Line first, Line second) {
+    const ld determinant = first.a * second.b - second.a * first.b;
+    const ld scale = sqrt(first.a * first.a + first.b * first.b) *
+                     sqrt(second.a * second.a + second.b * second.b);
+    if (scale < EPS || abs(determinant) <= EPS * scale) return {};
+    return {Point(
+      (first.b * second.c - second.b * first.c) / determinant,
+      (first.c * second.a - second.c * first.a) / determinant
+    )};
+  }
+
+  static vector<Point> inter_line_conic(Line line, Conic conic) {
+    vector<Point> result;
+    auto solve = [&](ld quadratic, ld linear, ld constant, auto make_point) {
+      for (ld root : CoreGeometryTools::real_polynomial_roots({constant, linear, quadratic})) {
+        result.push_back(make_point(root));
+      }
+    };
+    if (abs(line.b) >= abs(line.a) && abs(line.b) > EPS) {
+      const ld m = -line.a / line.b;
+      const ld n = -line.c / line.b;
+      solve(
+        conic.a + conic.b * m + conic.c * m * m,
+        conic.b * n + 2 * conic.c * m * n + conic.d + conic.e * m,
+        conic.c * n * n + conic.e * n + conic.f,
+        [&](ld x) { return Point(x, m * x + n); }
+      );
+    } else if (abs(line.a) > EPS) {
+      const ld m = -line.b / line.a;
+      const ld n = -line.c / line.a;
+      solve(
+        conic.c + conic.b * m + conic.a * m * m,
+        conic.b * n + 2 * conic.a * m * n + conic.e + conic.d * m,
+        conic.a * n * n + conic.d * n + conic.f,
+        [&](ld y) { return Point(m * y + n, y); }
+      );
+    }
+    CoreGeometryTools::deduplicate_points(result);
+    return result;
+  }
+
+  static vector<Point> inter_circle_circle(Circle first, Circle second) {
+    vector<Point> result;
+    const ld dx = second.p.x - first.p.x;
+    const ld dy = second.p.y - first.p.y;
+    const ld distance = sqrt(dx * dx + dy * dy);
+    if (distance < EPS || distance > first.radius + second.radius + EPS ||
+        distance < abs(first.radius - second.radius) - EPS) return result;
+    const ld along = (first.radius * first.radius - second.radius * second.radius +
+                      distance * distance) / (2 * distance);
+    ld height_squared = first.radius * first.radius - along * along;
+    if (height_squared < -EPS) return result;
+    const ld height = sqrt(max<ld>(0, height_squared));
+    const Point base(first.p.x + along * dx / distance, first.p.y + along * dy / distance);
+    result.push_back(Point(base.x - height * dy / distance, base.y + height * dx / distance));
+    if (height > EPS) {
+      result.push_back(Point(base.x + height * dy / distance, base.y - height * dx / distance));
+    }
+    CoreGeometryTools::deduplicate_points(result);
+    return result;
+  }
+
+  static Conic circle_as_conic(Circle circle) {
+    return Conic(
+      1, 0, 1, -2 * circle.p.x, -2 * circle.p.y,
+      circle.p.x * circle.p.x + circle.p.y * circle.p.y - circle.radius * circle.radius
+    );
+  }
+
+  static vector<Point> inter_conic_conic(Conic first, Conic second) {
+    using Polynomial = vector<ld>;
+    auto add = [](Polynomial a, const Polynomial &b, ld factor = 1) {
+      a.resize(max(a.size(), b.size()), 0);
+      for (size_t i = 0; i < b.size(); ++i) a[i] += factor * b[i];
+      return a;
+    };
+    auto multiply = [](const Polynomial &a, const Polynomial &b) {
+      Polynomial result(a.size() + b.size() - 1, 0);
+      for (size_t i = 0; i < a.size(); ++i) {
+        for (size_t j = 0; j < b.size(); ++j) result[i + j] += a[i] * b[j];
+      }
+      return result;
+    };
+    const Polynomial u1 = {first.f, first.d, first.a};
+    const Polynomial u2 = {second.f, second.d, second.a};
+    const Polynomial v1 = {first.e, first.b};
+    const Polynomial v2 = {second.e, second.b};
+    Polynomial p = add(Polynomial(u2.size(), 0), u2, first.c);
+    p = add(p, u1, -second.c);
+    Polynomial q = add(Polynomial(v1.size(), 0), v1, second.c);
+    q = add(q, v2, -first.c);
+    Polynomial r = add(multiply(v1, u2), multiply(v2, u1), -1);
+    Polynomial resultant = add(multiply(p, p), multiply(q, r));
+    ld resultant_scale = 0;
+    for (ld coefficient : resultant) resultant_scale = max(resultant_scale, abs(coefficient));
+    if (resultant_scale < 1e-18L && abs(first.c) < EPS && abs(second.c) < EPS &&
+        (abs(first.a) >= EPS || abs(second.a) >= EPS)) {
+      const Conic swapped_first(first.c, first.b, first.a, first.e, first.d, first.f);
+      const Conic swapped_second(second.c, second.b, second.a, second.e, second.d, second.f);
+      vector<Point> swapped = CoreGeometryTools::inter_conic_conic(swapped_first, swapped_second);
+      for (Point &point : swapped) std::swap(point.x, point.y);
+      CoreGeometryTools::deduplicate_points(swapped);
+      return swapped;
+    }
+
+    vector<Point> result;
+    for (ld x : CoreGeometryTools::real_polynomial_roots(resultant)) {
+      const ld u_first = first.a * x * x + first.d * x + first.f;
+      const ld v_first = first.b * x + first.e;
+      const ld u_second = second.a * x * x + second.d * x + second.f;
+      const ld v_second = second.b * x + second.e;
+      vector<ld> y_roots;
+      if (abs(first.c) >= abs(second.c) && abs(first.c) > EPS) {
+        y_roots = CoreGeometryTools::real_polynomial_roots({u_first, v_first, first.c});
+      } else if (abs(second.c) > EPS) {
+        y_roots = CoreGeometryTools::real_polynomial_roots({u_second, v_second, second.c});
+      } else if (abs(v_first) >= abs(v_second) && abs(v_first) > EPS) {
+        y_roots = {-u_first / v_first};
+      } else if (abs(v_second) > EPS) {
+        y_roots = {-u_second / v_second};
+      }
+      for (ld y : y_roots) {
+        const ld first_value = first.a * x * x + first.b * x * y + first.c * y * y +
+                               first.d * x + first.e * y + first.f;
+        const ld second_value = second.a * x * x + second.b * x * y + second.c * y * y +
+                                second.d * x + second.e * y + second.f;
+        const ld coordinate_scale = max<ld>(1, x * x + y * y);
+        if (abs(first_value) <= 1e-5L * coordinate_scale &&
+            abs(second_value) <= 1e-5L * coordinate_scale) result.push_back(Point(x, y));
+      }
+    }
+    CoreGeometryTools::deduplicate_points(result);
+    return result;
+  }
+
+  static vector<Point> inter_circle_conic(Circle circle, Conic conic) {
+    return CoreGeometryTools::inter_conic_conic(CoreGeometryTools::circle_as_conic(circle), conic);
+  }
+
+  static bool tangent_from_point(Point point, Circle circle, int branch, Line &result) {
+    const ld dx = point.x - circle.p.x;
+    const ld dy = point.y - circle.p.y;
+    const ld distance_squared = dx * dx + dy * dy;
+    const ld radius_squared = circle.radius * circle.radius;
+    if (distance_squared < EPS * EPS || circle.radius < EPS ||
+        distance_squared < radius_squared - EPS) return false;
+    if (abs(distance_squared - radius_squared) <= EPS) {
+      if (branch != 0) return false;
+      result = Line(dx, dy, -(dx * point.x + dy * point.y));
+      return true;
+    }
+    const ld along = radius_squared / distance_squared;
+    const ld side = circle.radius * sqrt(distance_squared - radius_squared) / distance_squared;
+    const Point base(circle.p.x + along * dx, circle.p.y + along * dy);
+    const Point contact(
+      base.x + (branch == 0 ? -side * dy : side * dy),
+      base.y + (branch == 0 ? side * dx : -side * dx)
+    );
+    result = Line(point, contact);
+    return branch == 0 || branch == 1;
+  }
+
+  static bool common_tangent(Circle first, Circle second, int branch, Line &result) {
+    const ld dx = second.p.x - first.p.x;
+    const ld dy = second.p.y - first.p.y;
+    const ld distance_squared = dx * dx + dy * dy;
+    if (distance_squared < EPS * EPS || first.radius < EPS || second.radius < EPS ||
+        branch < 0 || branch > 3) return false;
+    const bool transverse = branch >= 2;
+    const ld signed_radius = transverse ? -(first.radius + second.radius)
+                                        : second.radius - first.radius;
+    if (signed_radius * signed_radius > distance_squared + EPS) return false;
+    const ld projection = signed_radius / distance_squared;
+    const ld side = sqrt(max<ld>(0, distance_squared - signed_radius * signed_radius)) /
+                    distance_squared * (branch % 2 == 0 ? 1 : -1);
+    const ld a = projection * dx - side * dy;
+    const ld b = projection * dy + side * dx;
+    if (branch % 2 == 1 && abs(distance_squared - signed_radius * signed_radius) <= EPS) return false;
+    result = Line(a, b, first.radius - a * first.p.x - b * first.p.y);
+    return true;
+  }
+
+  static bool polar_line(Point point, Conic conic, Line &result) {
+    const ld a = 2 * conic.a * point.x + conic.b * point.y + conic.d;
+    const ld b = conic.b * point.x + 2 * conic.c * point.y + conic.e;
+    const ld c = conic.d * point.x + conic.e * point.y + 2 * conic.f;
+    if (a * a + b * b < EPS * EPS) return false;
+    result = Line(a, b, c);
+    return true;
+  }
+
+  static bool radical_axis(Circle first, Circle second, Line &result) {
+    const ld a = 2 * (second.p.x - first.p.x);
+    const ld b = 2 * (second.p.y - first.p.y);
+    const ld c = first.p.x * first.p.x + first.p.y * first.p.y -
+                 first.radius * first.radius - second.p.x * second.p.x -
+                 second.p.y * second.p.y + second.radius * second.radius;
+    if (a * a + b * b < EPS * EPS) return false;
+    result = Line(a, b, c);
+    return true;
+  }
+
+  static bool radical_center(Circle first, Circle second, Circle third, Point &result) {
+    Line first_axis, second_axis;
+    if (!CoreGeometryTools::radical_axis(first, second, first_axis) ||
+        !CoreGeometryTools::radical_axis(second, third, second_axis)) return false;
+    const vector<Point> intersections = CoreGeometryTools::inter_line_line(first_axis, second_axis);
+    if (intersections.empty()) return false;
+    result = intersections.front();
+    return true;
+  }
+
   // intersection of two conics
   static vector<Point> intersectConics(const Conic &C1, const Conic &C2) {
     // Build coefficients of resultant polynomial R(x) = Res_y(C1, C2), degree ≤ 4
@@ -628,7 +957,7 @@ static Cubic fitCubicThrough9(
   }
 
   static bool triangle_center(int number, Point p1, Point p2, Point p3, Point &result) {
-    if (number < 1 || number > 10) return false;
+    if (number < 1 || number > 100) return false;
     const ld a = CoreGeometryTools::dist_points(p2, p3);
     const ld b = CoreGeometryTools::dist_points(p3, p1);
     const ld c = CoreGeometryTools::dist_points(p1, p2);
@@ -683,7 +1012,126 @@ static Cubic fitCubicThrough9(
         a * (semiperimeter - a), b * (semiperimeter - b), c * (semiperimeter - c)
       );
     }
-    return barycentric(b + c, c + a, a + b);
+    if (number == 10) return barycentric(b + c, c + a, a + b);
+
+    const ld area = twice_area / 2;
+    const ld pi = acosl(-1.0L);
+    auto angle = [](ld opposite, ld adjacent1, ld adjacent2) {
+      const ld cosine = std::clamp(
+        (adjacent1 * adjacent1 + adjacent2 * adjacent2 - opposite * opposite) /
+        (2 * adjacent1 * adjacent2), -1.0L, 1.0L
+      );
+      return acosl(cosine);
+    };
+    const ld angle_a = angle(a, b, c);
+    const ld angle_b = angle(b, c, a);
+    const ld angle_c = angle(c, a, b);
+    const ld undefined = std::numeric_limits<ld>::quiet_NaN();
+    auto divide = [&](ld numerator, ld denominator) {
+      return abs(denominator) < 1e-12L ? undefined : numerator / denominator;
+    };
+    auto coordinate = [&](ld x, ld y, ld z, ld X, ld Y, ld Z) {
+      const ld x2 = x * x, y2 = y * y, z2 = z * z;
+      const ld x4 = x2 * x2, y4 = y2 * y2, z4 = z2 * z2;
+      switch (number) {
+        case 11: return (y + z - x) * (y - z) * (y - z);
+        case 12: return divide((y + z) * (y + z), y + z - x);
+        case 13: return x4 - 2 * (y2 - z2) * (y2 - z2) + x2 * (y2 + z2 + 4 * sqrt(3.0L) * area);
+        case 14: return x4 - 2 * (y2 - z2) * (y2 - z2) + x2 * (y2 + z2 - 4 * sqrt(3.0L) * area);
+        case 15: return x * sin(X + pi / 3);
+        case 16: return x * sin(X - pi / 3);
+        case 17: return divide(x, sin(X + pi / 6));
+        case 18: return divide(x, sin(X - pi / 6));
+        case 19: return x * tan(X);
+        case 20: return -3 * x4 + 2 * x2 * (y2 + z2) + (y2 - z2) * (y2 - z2);
+        case 21: return divide(x, cos(Y) + cos(Z));
+        case 22: return x2 * (y4 + z4 - x4);
+        case 23: return x2 * (y4 + z4 - x4 - y2 * z2);
+        case 24: return tan(X) * cos(2 * X);
+        case 25: return divide(x2, y2 + z2 - x2);
+        case 26: return x2 * (y2 * cos(2 * Y) + z2 * cos(2 * Z) - x2 * cos(2 * X));
+        case 27: return divide(tan(X), y + z);
+        case 28: return divide(sin(X) * tan(X), y + z);
+        case 29: return divide(tan(X), cos(Y) + cos(Z));
+        case 30: return 2 * x4 - (y2 - z2) * (y2 - z2) - x2 * (y2 + z2);
+        case 31: return x * x2;
+        case 32: return x4;
+        case 33: return sin(X) + tan(X);
+        case 34: return sin(X) - tan(X);
+        case 35: return x2 * (y2 + z2 - x2 + y * z);
+        case 36: return x2 * (y2 + z2 - x2 - y * z);
+        case 37: return x * (y + z);
+        case 38: return x * (y2 + z2);
+        case 39: return x2 * (y2 + z2);
+        case 40: return x * (divide(y, z + x - y) + divide(z, x + y - z) - divide(x, y + z - x));
+        case 41: return x * x2 * (y + z - x);
+        case 42: return x2 * (y + z);
+        case 43: return x * (x * y + x * z - y * z);
+        case 44: return x * (y + z - 2 * x);
+        case 45: return x * (2 * y + 2 * z - x);
+        case 46: return x * (cos(Y) + cos(Z) - cos(X));
+        case 47: return x * cos(2 * X);
+        case 48: return x * sin(2 * X);
+        case 49: return sin(X) * cos(3 * X);
+        case 50: return sin(X) * sin(3 * X);
+        case 51: return x * x2 * cos(Y - Z);
+        case 52: return tan(X) * (divide(1, cos(2 * Y)) + divide(1, cos(2 * Z)));
+        case 53: return x * tan(X) * cos(Y - Z);
+        case 54: return divide(sin(X), cos(Y - Z));
+        case 55: return x2 * (y + z - x);
+        case 56: return divide(x2, y + z - x);
+        case 57: return divide(x, y + z - x);
+        case 58: return divide(x2, y + z);
+        case 59: return divide(x, 1 - cos(Y - Z));
+        case 60: return divide(x, 1 + cos(Y - Z));
+        case 61: return sin(X) * sin(X + pi / 6);
+        case 62: return sin(X) * sin(X - pi / 6);
+        case 63: return cos(X);
+        case 64: return divide(x, cos(X) - cos(Y) * cos(Z));
+        case 65: return divide(x * (y + z), y + z - x);
+        case 66: return divide(1, y4 + z4 - x4);
+        case 67: return divide(1, y4 + z4 - x4 - y2 * z2);
+        case 68: return tan(2 * X);
+        case 69: return divide(1, tan(X));
+        case 70: return divide(1, y2 * cos(2 * Y) + z2 * cos(2 * Z) - x2 * cos(2 * X));
+        case 71: return (y + z) * sin(2 * X);
+        case 72: return (y + z) * cos(X);
+        case 73: return (cos(Y) + cos(Z)) * sin(2 * X);
+        case 74: return divide(x, cos(X) - 2 * cos(Y) * cos(Z));
+        case 75: return divide(1, x);
+        case 76: return divide(1, x2);
+        case 77: return divide(x, 1 + divide(1, cos(X)));
+        case 78: return divide(x, 1 - divide(1, cos(X)));
+        case 79: return divide(1, y2 + z2 - x2 + y * z);
+        case 80: return divide(1, y2 + z2 - x2 - y * z);
+        case 81: return divide(x, y + z);
+        case 82: return divide(x, y2 + z2);
+        case 83: return divide(1, y2 + z2);
+        case 84: return divide(sin(X), cos(Y) + cos(Z) - cos(X) - 1);
+        case 85: return divide(y * z, y + z - x);
+        case 86: return divide(1, y + z);
+        case 87: return divide(x, x * y + x * z - y * z);
+        case 88: return divide(x, y + z - 2 * x);
+        case 89: return divide(x, 2 * y + 2 * z - x);
+        case 90: return divide(x, cos(Y) + cos(Z) - cos(X));
+        case 91: return divide(sin(X), cos(2 * X));
+        case 92: return divide(1, cos(X));
+        case 93: return divide(sin(X), cos(3 * X));
+        case 94: return divide(sin(X), sin(3 * X));
+        case 95: return divide(y * z, cos(Y - Z));
+        case 96: return divide(x, cos(2 * X) * cos(Y - Z));
+        case 97: return divide(cos(X), cos(Y - Z));
+        case 98: return divide(1, y4 + z4 - x2 * y2 - x2 * z2);
+        case 99: return divide(1, y2 - z2);
+        case 100: return divide(x, y - z);
+      }
+      return undefined;
+    };
+    return barycentric(
+      coordinate(a, b, c, angle_a, angle_b, angle_c),
+      coordinate(b, c, a, angle_b, angle_c, angle_a),
+      coordinate(c, a, b, angle_c, angle_a, angle_b)
+    );
   }
 
   static Point incenter(Point p1, Point p2, Point p3) {
