@@ -67,7 +67,11 @@ The **Invert Diagram** tool creates a live-linked inversion in a new tab:
 2. Select **Invert Diagram**.
 3. Click the inversion circle.
 
-The generated tab updates whenever its source diagram changes. Points, full lines, and circles are inverted exactly. Lines through the inversion center remain lines, circles through the center become lines, and the inversion center itself is omitted because its image is at infinity.
+The generated tab updates whenever its source diagram changes. Points, full lines, and circles are inverted exactly. Lines through the inversion center remain lines and circles through the center become lines. The center itself is retained as a reference marker labeled `name^{inv}`, although its mathematical image is at infinity.
+
+An inversion tab has a **Dependency: ON/OFF** toggle. Turning dependency off creates an editable inversion-conjugated construction: moving an inverted free point applies inversion, rebuilds the original dependency graph, and inverts the result again, so dependent points, lines, and circles continue to update. Turning dependency back on discards detached edits and resumes generation from the source.
+
+**Force Overlay** creates a read-only overlay without asking for point pairs. Every invertible free point in the inverted construction is forced to the position of its corresponding source free point, then the complete conjugated dependency graph is rebuilt. The original and forced-inverted diagrams are drawn in the same coordinate system, with the inverted diagram shown in lighter colors.
 
 ### Tabs
 
@@ -192,7 +196,7 @@ gui_assets/                  Fonts and GUI textures
 ## Current limitations
 
 - Full-diagram inversion currently omits segments, conics, and cubics because their inverses are not generally represented by the existing exact primitive types.
-- Live inversion tabs are generated read-only views; edit their source tab to update them.
+- Live inversion tabs are read-only while dependency is enabled; turn dependency off to materialize an editable snapshot.
 - The numbered triangle-center catalog covers `X(1)` through `X(100)`, but projective centers at infinity cannot be rendered as finite points.
 - Inline math uses a built-in LaTeX-like subset rather than a complete TeX engine; fractions are rendered in compact inline form.
 - Build configuration is currently macOS/Homebrew-oriented and may require path changes on other systems.

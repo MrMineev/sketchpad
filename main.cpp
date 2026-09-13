@@ -53,9 +53,19 @@ struct SketchTab {
   int source_id = -1;
   json inversion_circle;
   std::string source_signature;
+  bool dependency_enabled = true;
+  bool overlay = false;
+
+  bool is_inversion() const {
+    return source_id != -1;
+  }
 
   bool is_linked() const {
-    return source_id != -1;
+    return is_inversion() && dependency_enabled;
+  }
+
+  bool is_read_only() const {
+    return is_linked() || overlay;
   }
 };
 
@@ -70,7 +80,12 @@ int find_inversion_circle(const Protocol &protocol, const json &definition) {
   if (!protocol.protocol.contains("Circle") || !protocol.protocol["Circle"].is_array()) return -1;
   const json &circles = protocol.protocol["Circle"];
   for (size_t i = 0; i < circles.size(); ++i) {
-    if (circles[i] == definition) return static_cast<int>(i);
+    if (!circles[i].is_object()) continue;
+    const bool same_function = circles[i].value("func", "") == definition.value("func", "");
+    const bool same_args = circles[i].value("args", json::array()) ==
+                           definition.value("args", json::array());
+    const bool same_version = circles[i].value("version", 0) == definition.value("version", 0);
+    if (same_function && same_args && same_version) return static_cast<int>(i);
   }
   return -1;
 }
@@ -163,6 +178,11 @@ signed main() {
   sf::Vector2f text_annotation_position;
   int style_tab = -1;
   ObjectStyleRequest style_target;
+  int overlay_source_id = -1;
+  int overlay_inversion_id = -1;
+  bool overlay_expecting_source = true;
+  bool overlay_error = false;
+  std::vector<std::pair<int, int>> overlay_matches;
   std::string text_annotation_value;
   bool protocol_preview = false;
   int protocol_scroll = 0;
@@ -187,7 +207,79 @@ signed main() {
         for (SketchTab &tab : tabs) tab.geometry->resize_camera(width, height);
         tab_event = true;
       }
-      if (style_tab != -1) {
+      if (overlay_source_id != -1) {
+        tab_event = true;
+        auto cancel_overlay = [&]() {
+          overlay_source_id = -1;
+          overlay_inversion_id = -1;
+          overlay_matches.clear();
+          overlay_expecting_source = true;
+          overlay_error = false;
+        };
+        if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
+          cancel_overlay();
+        } else if (event.type == sf::Event::MouseButtonPressed &&
+                   event.mouseButton.button == sf::Mouse::Left &&
+                   event.mouseButton.x > MENU_BAR_X && event.mouseButton.y > TAB_HEIGHT) {
+          const int point = tabs[active_tab].geometry->point_at_screen(
+            window, sf::Vector2i(event.mouseButton.x, event.mouseButton.y)
+          );
+          if (point != -1) {
+            if (overlay_expecting_source) {
+              const bool duplicate = std::any_of(
+                overlay_matches.begin(), overlay_matches.end(),
+                [&](const auto &match) { return match.first == point; }
+              );
+              if (!duplicate) overlay_matches.push_back({point, -1});
+              if (overlay_matches.size() == 3) {
+                overlay_expecting_source = false;
+                active_tab = find_tab_by_id(tabs, overlay_inversion_id);
+                toolbar.geomv = tabs[active_tab].geometry.get();
+              }
+            } else {
+              const bool duplicate = std::any_of(
+                overlay_matches.begin(), overlay_matches.end(),
+                [&](const auto &match) { return match.second == point; }
+              );
+              if (!duplicate) {
+                const auto unmatched = std::find_if(
+                  overlay_matches.begin(), overlay_matches.end(),
+                  [](const auto &match) { return match.second == -1; }
+                );
+                if (unmatched != overlay_matches.end()) unmatched->second = point;
+              }
+              const bool complete = std::all_of(
+                overlay_matches.begin(), overlay_matches.end(),
+                [](const auto &match) { return match.second != -1; }
+              );
+              if (complete) {
+                const int source_index = find_tab_by_id(tabs, overlay_source_id);
+                const int inversion_index = find_tab_by_id(tabs, overlay_inversion_id);
+                SketchTab overlay_tab;
+                overlay_tab.geometry = std::make_unique<GeometryVisual>(MENU_BAR_X);
+                overlay_tab.title = "Overlay " + std::to_string(next_tab_id + 1);
+                overlay_tab.id = next_tab_id++;
+                overlay_tab.overlay = true;
+                if (source_index != -1 && inversion_index != -1 &&
+                    overlay_tab.geometry->build_overlay(
+                      *tabs[source_index].geometry, *tabs[inversion_index].geometry, overlay_matches
+                    )) {
+                  tabs.push_back(std::move(overlay_tab));
+                  active_tab = tabs.size() - 1;
+                  toolbar.geomv = tabs[active_tab].geometry.get();
+                  cancel_overlay();
+                } else {
+                  overlay_matches.clear();
+                  overlay_expecting_source = true;
+                  overlay_error = true;
+                  active_tab = source_index;
+                  if (active_tab != -1) toolbar.geomv = tabs[active_tab].geometry.get();
+                }
+              }
+            }
+          }
+        }
+      } else if (style_tab != -1) {
         tab_event = true;
         if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape) {
           style_tab = -1;
@@ -356,6 +448,55 @@ signed main() {
           rename_text.clear();
         }
       }
+      if (!tab_event && tabs[active_tab].is_inversion() &&
+          event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left &&
+          event.mouseButton.y >= 44 && event.mouseButton.y <= 78) {
+        if (event.mouseButton.x >= MENU_BAR_X + 10 && event.mouseButton.x <= MENU_BAR_X + 170) {
+          SketchTab &inversion = tabs[active_tab];
+          if (inversion.is_linked()) {
+            const int source_index = find_tab_by_id(tabs, inversion.source_id);
+            if (source_index != -1) {
+              GeometryVisual &source = *tabs[source_index].geometry;
+              const int circle = find_inversion_circle(source.protocol, inversion.inversion_circle);
+              inversion.geometry->begin_conjugated_inversion(source, circle);
+              inversion.dependency_enabled = false;
+              inversion.source_signature.clear();
+            }
+          } else {
+            const int source_index = find_tab_by_id(tabs, inversion.source_id);
+            if (source_index != -1) {
+              GeometryVisual &source = *tabs[source_index].geometry;
+              inversion.geometry->build_inversion(
+                source, find_inversion_circle(source.protocol, inversion.inversion_circle)
+              );
+              inversion.source_signature = source.protocol.get_string_format();
+              inversion.dependency_enabled = true;
+            }
+          }
+          toolbar.geomv = tabs[active_tab].geometry.get();
+          tab_event = true;
+        } else if (event.mouseButton.x >= MENU_BAR_X + 180 &&
+                   event.mouseButton.x <= MENU_BAR_X + 330) {
+          const int source_index = find_tab_by_id(tabs, tabs[active_tab].source_id);
+          if (source_index != -1) {
+            GeometryVisual &source = *tabs[source_index].geometry;
+            const int circle = find_inversion_circle(
+              source.protocol, tabs[active_tab].inversion_circle
+            );
+            SketchTab overlay_tab;
+            overlay_tab.geometry = std::make_unique<GeometryVisual>(MENU_BAR_X);
+            overlay_tab.title = "Overlay " + std::to_string(next_tab_id + 1);
+            overlay_tab.id = next_tab_id++;
+            overlay_tab.overlay = true;
+            if (overlay_tab.geometry->build_forced_overlay(source, circle)) {
+              tabs.push_back(std::move(overlay_tab));
+              active_tab = tabs.size() - 1;
+              toolbar.geomv = tabs[active_tab].geometry.get();
+            }
+          }
+          tab_event = true;
+        }
+      }
       const float protocol_button_x = window.getSize().x - 44.f;
       const float new_tab_button_x = window.getSize().x - 84.f;
       const float duplicate_tab_button_x = window.getSize().x - 124.f;
@@ -502,7 +643,7 @@ signed main() {
         tab_event = true;
       }
 
-      if (!tab_event && !tabs[active_tab].is_linked()) {
+      if (!tab_event && !tabs[active_tab].is_read_only()) {
         menu.onEvent(event);
         tabs[active_tab].geometry->handleEvent(event, window, menu);
         ObjectStyleRequest requested_style;
@@ -550,7 +691,7 @@ signed main() {
         }
       }
 
-      if (!tab_event && !tabs[active_tab].is_linked() && event.type == sf::Event::KeyPressed &&
+      if (!tab_event && !tabs[active_tab].is_read_only() && event.type == sf::Event::KeyPressed &&
           event.key.code == sf::Keyboard::Enter) {
         sf::String s = command_prompt->getText();
         cout << "string = " << s.toAnsiString() << endl;
@@ -607,6 +748,56 @@ signed main() {
       close_icon[2] = sf::Vertex(sf::Vector2f(tab_x + TAB_WIDTH - 7, 12), sf::Color::Black);
       close_icon[3] = sf::Vertex(sf::Vector2f(tab_x + TAB_WIDTH - 17, 24), sf::Color::Black);
       window.draw(close_icon);
+    }
+
+    if (tabs[active_tab].is_inversion()) {
+      sf::RectangleShape dependency(sf::Vector2f(160, 34));
+      dependency.setPosition(MENU_BAR_X + 10, 44);
+      dependency.setFillColor(
+        tabs[active_tab].is_linked() ? sf::Color(170, 225, 175) : sf::Color(220, 220, 220)
+      );
+      dependency.setOutlineColor(sf::Color::Black);
+      dependency.setOutlineThickness(1);
+      window.draw(dependency);
+      sf::Text dependency_text(
+        tabs[active_tab].is_linked() ? "Dependency: ON" : "Dependency: OFF", font, 14
+      );
+      dependency_text.setFillColor(sf::Color::Black);
+      dependency_text.setPosition(MENU_BAR_X + 30, 52);
+      window.draw(dependency_text);
+      sf::RectangleShape overlay_button(sf::Vector2f(150, 34));
+      overlay_button.setPosition(MENU_BAR_X + 180, 44);
+      overlay_button.setFillColor(sf::Color(205, 215, 240));
+      overlay_button.setOutlineColor(sf::Color::Black);
+      overlay_button.setOutlineThickness(1);
+      window.draw(overlay_button);
+      sf::Text overlay_text("Force Overlay", font, 14);
+      overlay_text.setFillColor(sf::Color::Black);
+      overlay_text.setPosition(MENU_BAR_X + 207, 52);
+      window.draw(overlay_text);
+    }
+
+    if (overlay_source_id != -1) {
+      sf::RectangleShape prompt(sf::Vector2f(430, 42));
+      prompt.setPosition((window.getSize().x - 430) / 2.f, 88);
+      prompt.setFillColor(overlay_error ? sf::Color(255, 210, 210) : sf::Color(245, 245, 245));
+      prompt.setOutlineColor(sf::Color::Black);
+      prompt.setOutlineThickness(1);
+      window.draw(prompt);
+      const int completed_inverted = std::count_if(
+        overlay_matches.begin(), overlay_matches.end(),
+        [](const auto &match) { return match.second != -1; }
+      );
+      const int pair_number = overlay_expecting_source
+        ? static_cast<int>(overlay_matches.size()) + 1 : completed_inverted + 1;
+      const std::string instruction = overlay_error
+        ? "Points were collinear. Choose three new pairs."
+        : (overlay_expecting_source ? "Select source point " : "Select matching inverted point ") +
+          std::to_string(pair_number) + "/3";
+      sf::Text prompt_text(instruction, font, 15);
+      prompt_text.setFillColor(sf::Color::Black);
+      prompt_text.setPosition((window.getSize().x - 430) / 2.f + 14, 99);
+      window.draw(prompt_text);
     }
 
     if (protocol_preview) {

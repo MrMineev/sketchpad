@@ -309,20 +309,18 @@ void GeometryVisual::rebuild() {
       int p1 = information_command["args"][0];
       int p2 = information_command["args"][1];
       int p3 = information_command["args"][2];
-      AlgGeom::Line l1 = AlgGeom::CoreGeometryTools::perp_bisector(
-        AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos),
-        AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos)
+      AlgGeom::Point p;
+      const bool valid = AlgGeom::CoreGeometryTools::circumcenter(
+        convert_gpoint(this->points[p1]), convert_gpoint(this->points[p2]),
+        convert_gpoint(this->points[p3]), p
       );
-      AlgGeom::Line l2 = AlgGeom::CoreGeometryTools::perp_bisector(
-        AlgGeom::Point(this->points[p2].x_pos, this->points[p2].y_pos),
-        AlgGeom::Point(this->points[p3].x_pos, this->points[p3].y_pos)
-      );
-      AlgGeom::Point p = AlgGeom::CoreGeometryTools::inter_lines(l1, l2);
+      if (!valid) p = convert_gpoint(this->points[p1]);
       this->circles.push_back(GCircle(
-        p.x, p.y, AlgGeom::CoreGeometryTools::dist_points(
+        p.x, p.y, valid ? AlgGeom::CoreGeometryTools::dist_points(
           p, AlgGeom::Point(this->points[p1].x_pos, this->points[p1].y_pos)
-        )
+        ) : 0
       ));
+      this->protocol.protocol[return_type][index]["valid"] = valid;
     } else if (command_type == "interLL") {
       int p1 = information_command["args"][0];
       int p2 = information_command["args"][1];
@@ -727,7 +725,7 @@ void GeometryVisual::rebuild() {
   for (int i = 0; i < this->circles.size(); ++i) {
     this->circles[i].index = i;
     const json &circle = this->protocol.protocol["Circle"][i];
-    this->circles[i].visible = circle.value("visible", true);
+    this->circles[i].visible = circle.value("visible", true) && circle.value("valid", true);
     this->circles[i].color = protocol_color(circle, sf::Color::Green);
     this->circles[i].thickness = circle.value("thickness", 1.f);
     this->circles[i].dashed = circle.value("dashed", false);
@@ -841,12 +839,14 @@ void GeometryVisual::show_all() {
 }
 
 void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion_circle) {
+  this->conjugated_inversion = false;
   this->points.clear();
   this->lines.clear();
   this->circles.clear();
   this->conics.clear();
   this->cubics.clear();
   this->texts.clear();
+  this->inversion_source_point_indices.clear();
   if (inversion_circle < 0 || inversion_circle >= source.circles.size()) return;
 
   const GCircle &base = source.circles[inversion_circle];
@@ -859,6 +859,14 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
     const json &objects = source.protocol.protocol[category];
     return objects.is_array() && index >= 0 && index < objects.size() && objects[index].is_object() &&
            objects[index].value("searcher", false);
+  };
+  auto point_label = [&](int index) {
+    if (!source.points[index].label.empty()) return source.points[index].label;
+    const json &objects = source.protocol.protocol["Point"];
+    if (objects.is_array() && index < objects.size() && objects[index].is_object()) {
+      return objects[index].value("label", "P" + std::to_string(index + 1));
+    }
+    return "P" + std::to_string(index + 1);
   };
   auto add_line = [&](AlgGeom::Point point, AlgGeom::Point direction, bool visible,
                       sf::Color color, float thickness, bool dashed) {
@@ -879,6 +887,22 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
     this->lines.push_back(line);
   };
 
+  GPoint center_marker(center.x, center.y);
+  center_marker.label = "O^{inv}";
+  center_marker.color = sf::Color(180, 0, 0);
+  for (int i = 0; i < source.points.size(); ++i) {
+    const GPoint &source_point = source.points[i];
+    if (AlgGeom::CoreGeometryTools::dist_points(convert_gpoint(source_point), center) < AlgGeom::EPS) {
+      center_marker.label = point_label(i) + "^{inv}";
+      center_marker.color = source_point.color;
+      center_marker.thickness = source_point.thickness;
+      break;
+    }
+  }
+  center_marker.index = this->points.size();
+  this->points.push_back(center_marker);
+  this->inversion_source_point_indices.push_back(-1);
+
   for (int i = 0; i < source.points.size(); ++i) {
     if (is_searcher("Point", i)) continue;
     const AlgGeom::Point point(source.points[i].x_pos, source.points[i].y_pos);
@@ -887,13 +911,14 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
       point, AlgGeom::Circle(center, base.radius)
     );
     GPoint result(inverted.x, inverted.y);
-    result.label = source.points[i].label;
+    result.label = point_label(i);
     result.visible = source.points[i].visible;
     result.label_visible = source.points[i].label_visible;
     result.color = source.points[i].color;
     result.thickness = source.points[i].thickness;
     result.index = this->points.size();
     this->points.push_back(result);
+    this->inversion_source_point_indices.push_back(i);
   }
 
   for (int i = 0; i < source.lines.size(); ++i) {
@@ -963,6 +988,355 @@ void GeometryVisual::build_inversion(const GeometryVisual &source, int inversion
   }
 }
 
+void GeometryVisual::materialize() {
+  const std::vector<GPoint> rendered_points = this->points;
+  const std::vector<GLine> rendered_lines = this->lines;
+  const std::vector<GCircle> rendered_circles = this->circles;
+  const std::vector<GTextAnnotation> rendered_texts = this->texts;
+  Protocol materialized;
+
+  for (const GPoint &point : rendered_points) {
+    const int index = materialized.protocol["Point"].is_array()
+      ? materialized.protocol["Point"].size() : 0;
+    materialized.new_point(index, point.x_pos, point.y_pos);
+    materialized.set_point_label(index, point.label.empty() ? "P" + std::to_string(index + 1) : point.label);
+    materialized.set_point_label_visibility(index, point.label_visible);
+    materialized.set_visibility("Point", index, point.visible);
+    materialized.set_style(
+      "Point", index, point.color.r, point.color.g, point.color.b, point.thickness, false
+    );
+  }
+
+  auto helper_point = [&](float x, float y) {
+    const int index = materialized.protocol["Point"].is_array()
+      ? materialized.protocol["Point"].size() : 0;
+    materialized.new_point(index, x, y);
+    materialized.protocol["Point"][index]["helper"] = true;
+    materialized.set_visibility("Point", index, false);
+    materialized.set_point_label_visibility(index, false);
+    materialized.set_point_label(index, "_helper" + std::to_string(index));
+    return index;
+  };
+
+  for (const GLine &line : rendered_lines) {
+    const AlgGeom::Line equation(
+      AlgGeom::Point(line.x1, line.y1), AlgGeom::Point(line.x2, line.y2)
+    );
+    vector<int> incident;
+    for (int i = 0; i < rendered_points.size(); ++i) {
+      if (rendered_points[i].visible && AlgGeom::CoreGeometryTools::dist_point_to_line(
+            convert_gpoint(rendered_points[i]), equation) < 0.5L) incident.push_back(i);
+    }
+    int first = -1, second = -1;
+    ld best_distance = -1;
+    for (int i = 0; i < incident.size(); ++i) {
+      for (int j = i + 1; j < incident.size(); ++j) {
+        const ld distance = AlgGeom::CoreGeometryTools::dist_points(
+          convert_gpoint(rendered_points[incident[i]]), convert_gpoint(rendered_points[incident[j]])
+        );
+        if (distance > best_distance) {
+          best_distance = distance;
+          first = incident[i];
+          second = incident[j];
+        }
+      }
+    }
+    if (first == -1 && incident.empty()) {
+      first = helper_point(line.x1, line.y1);
+      second = helper_point(line.x2, line.y2);
+    } else if (first == -1) {
+      first = incident[0];
+    }
+    if (second == -1) {
+      const GPoint &point = rendered_points[first];
+      const ld first_distance = hypot(point.x_pos - line.x1, point.y_pos - line.y1);
+      const ld second_distance = hypot(point.x_pos - line.x2, point.y_pos - line.y2);
+      second = first_distance > second_distance
+        ? helper_point(line.x1, line.y1) : helper_point(line.x2, line.y2);
+    }
+    const int index = materialized.protocol["Line"].is_array()
+      ? materialized.protocol["Line"].size() : 0;
+    materialized.new_line(index, first, second, line.line_type == 0 ? 0 : 1);
+    materialized.set_visibility("Line", index, line.visible);
+    materialized.set_style(
+      "Line", index, line.color.r, line.color.g, line.color.b, line.thickness, line.dashed
+    );
+  }
+
+  for (const GCircle &circle : rendered_circles) {
+    vector<int> incident;
+    for (int i = 0; i < rendered_points.size(); ++i) {
+      const ld distance = AlgGeom::CoreGeometryTools::dist_points(
+        convert_gpoint(rendered_points[i]), AlgGeom::Point(circle.x_pos, circle.y_pos)
+      );
+      if (rendered_points[i].visible && abs(distance - circle.radius) < 0.5L) incident.push_back(i);
+    }
+    int first = -1, second = -1, third = -1;
+    for (int i = 0; i < incident.size() && first == -1; ++i) {
+      for (int j = i + 1; j < incident.size() && first == -1; ++j) {
+        for (int k = j + 1; k < incident.size(); ++k) {
+          AlgGeom::Point center;
+          if (AlgGeom::CoreGeometryTools::circumcenter(
+                convert_gpoint(rendered_points[incident[i]]),
+                convert_gpoint(rendered_points[incident[j]]),
+                convert_gpoint(rendered_points[incident[k]]), center)) {
+            first = incident[i];
+            second = incident[j];
+            third = incident[k];
+            break;
+          }
+        }
+      }
+    }
+    const int index = materialized.protocol["Circle"].is_array()
+      ? materialized.protocol["Circle"].size() : 0;
+    if (first != -1) {
+      materialized.new_circumcircle(index, first, second, third);
+    } else {
+      const int center = helper_point(circle.x_pos, circle.y_pos);
+      const int radius = incident.empty()
+        ? helper_point(circle.x_pos + circle.radius, circle.y_pos) : incident[0];
+      materialized.new_circle(index, center, radius);
+    }
+    materialized.set_visibility("Circle", index, circle.visible);
+    materialized.set_style(
+      "Circle", index, circle.color.r, circle.color.g, circle.color.b,
+      circle.thickness, circle.dashed
+    );
+  }
+
+  for (const GTextAnnotation &text : rendered_texts) {
+    const int index = materialized.protocol["Text"].is_array()
+      ? materialized.protocol["Text"].size() : 0;
+    materialized.new_text(index, text.x, text.y, text.content);
+    materialized.set_visibility("Text", index, text.visible);
+  }
+
+  this->protocol = materialized;
+  this->rebuild();
+}
+
+bool GeometryVisual::build_overlay(const GeometryVisual &source, const GeometryVisual &inverted,
+                                   const std::vector<std::pair<int, int>> &matches) {
+  if (matches.size() != 3) return false;
+  for (const auto &match : matches) {
+    if (match.first < 0 || match.first >= source.points.size() ||
+        match.second < 0 || match.second >= inverted.points.size()) return false;
+  }
+  const AlgGeom::Point q0 = convert_gpoint(inverted.points[matches[0].second]);
+  const AlgGeom::Point q1 = convert_gpoint(inverted.points[matches[1].second]);
+  const AlgGeom::Point q2 = convert_gpoint(inverted.points[matches[2].second]);
+  const AlgGeom::Point p0 = convert_gpoint(source.points[matches[0].first]);
+  const AlgGeom::Point p1 = convert_gpoint(source.points[matches[1].first]);
+  const AlgGeom::Point p2 = convert_gpoint(source.points[matches[2].first]);
+  const ld q00 = q1.x - q0.x, q01 = q2.x - q0.x;
+  const ld q10 = q1.y - q0.y, q11 = q2.y - q0.y;
+  const ld determinant = q00 * q11 - q01 * q10;
+  if (abs(determinant) < AlgGeom::EPS) return false;
+  const ld inverse00 = q11 / determinant, inverse01 = -q01 / determinant;
+  const ld inverse10 = -q10 / determinant, inverse11 = q00 / determinant;
+  const ld p00 = p1.x - p0.x, p01 = p2.x - p0.x;
+  const ld p10 = p1.y - p0.y, p11 = p2.y - p0.y;
+  const ld m00 = p00 * inverse00 + p01 * inverse10;
+  const ld m01 = p00 * inverse01 + p01 * inverse11;
+  const ld m10 = p10 * inverse00 + p11 * inverse10;
+  const ld m11 = p10 * inverse01 + p11 * inverse11;
+  const ld tx = p0.x - m00 * q0.x - m01 * q0.y;
+  const ld ty = p0.y - m10 * q0.x - m11 * q0.y;
+  const ld matrix_determinant = m00 * m11 - m01 * m10;
+  if (abs(matrix_determinant) < AlgGeom::EPS) return false;
+
+  auto transform = [&](AlgGeom::Point point) {
+    return AlgGeom::Point(
+      m00 * point.x + m01 * point.y + tx,
+      m10 * point.x + m11 * point.y + ty
+    );
+  };
+  auto light = [](sf::Color color) {
+    return sf::Color(
+      color.r + (255 - color.r) * 0.6f,
+      color.g + (255 - color.g) * 0.6f,
+      color.b + (255 - color.b) * 0.6f,
+      190
+    );
+  };
+
+  this->points = source.points;
+  this->lines = source.lines;
+  this->circles = source.circles;
+  this->conics = source.conics;
+  this->cubics = source.cubics;
+  this->texts = source.texts;
+
+  for (const GPoint &point : inverted.points) {
+    const AlgGeom::Point position = transform(convert_gpoint(point));
+    GPoint overlay(position.x, position.y);
+    overlay.label = point.label;
+    overlay.label_visible = point.label.find("^{inv}") != std::string::npos;
+    overlay.visible = point.visible;
+    overlay.color = light(point.color);
+    overlay.thickness = point.thickness;
+    overlay.index = this->points.size();
+    this->points.push_back(overlay);
+  }
+  for (const GLine &line : inverted.lines) {
+    const AlgGeom::Point first = transform(AlgGeom::Point(line.x1, line.y1));
+    const AlgGeom::Point second = transform(AlgGeom::Point(line.x2, line.y2));
+    GLine overlay(first.x, first.y, second.x, second.y, 0);
+    overlay.line_type = line.line_type;
+    overlay.visible = line.visible;
+    overlay.color = light(line.color);
+    overlay.thickness = line.thickness;
+    overlay.dashed = line.dashed;
+    overlay.index = this->lines.size();
+    this->lines.push_back(overlay);
+  }
+
+  const ld n00 = m11 / matrix_determinant, n01 = -m01 / matrix_determinant;
+  const ld n10 = -m10 / matrix_determinant, n11 = m00 / matrix_determinant;
+  for (const GCircle &circle : inverted.circles) {
+    const ld kx = -n00 * tx - n01 * ty - circle.x_pos;
+    const ld ky = -n10 * tx - n11 * ty - circle.y_pos;
+    GConic overlay(
+      n00 * n00 + n10 * n10,
+      2 * (n00 * n01 + n10 * n11),
+      n01 * n01 + n11 * n11,
+      2 * (n00 * kx + n10 * ky),
+      2 * (n01 * kx + n11 * ky),
+      kx * kx + ky * ky - circle.radius * circle.radius
+    );
+    overlay.visible = circle.visible;
+    overlay.color = light(circle.color);
+    overlay.thickness = circle.thickness;
+    overlay.dashed = circle.dashed;
+    overlay.index = this->conics.size();
+    this->conics.push_back(overlay);
+  }
+  for (const GTextAnnotation &text : inverted.texts) {
+    const AlgGeom::Point position = transform(AlgGeom::Point(text.x, text.y));
+    GTextAnnotation overlay(position.x, position.y, text.content);
+    overlay.visible = text.visible;
+    overlay.index = this->texts.size();
+    this->texts.push_back(overlay);
+  }
+  return true;
+}
+
+void GeometryVisual::begin_conjugated_inversion(const GeometryVisual &source, int inversion_circle) {
+  if (inversion_circle < 0 || inversion_circle >= source.circles.size()) return;
+  this->build_inversion(source, inversion_circle);
+  this->conjugated_inversion = true;
+  this->inversion_template_data = source.protocol.protocol;
+  this->fixed_inversion_center = sf::Vector2f(
+    source.circles[inversion_circle].x_pos, source.circles[inversion_circle].y_pos
+  );
+  this->fixed_inversion_radius = source.circles[inversion_circle].radius;
+  this->fixed_inversion_circle = inversion_circle;
+  this->inversion_controls.assign(source.points.size(), sf::Vector2f());
+  this->inversion_control_active.assign(source.points.size(), false);
+  for (int i = 0; i < this->points.size() && i < this->inversion_source_point_indices.size(); ++i) {
+    const int source_index = this->inversion_source_point_indices[i];
+    if (source_index < 0 || !source.protocol.protocol["Point"].is_array() ||
+        source_index >= source.protocol.protocol["Point"].size()) continue;
+    const json &definition = source.protocol.protocol["Point"][source_index];
+    if (definition.is_object() && definition.value("func", "") == "newPoint") {
+      this->inversion_controls[source_index] = sf::Vector2f(this->points[i].x_pos, this->points[i].y_pos);
+      this->inversion_control_active[source_index] = true;
+    }
+  }
+}
+
+bool GeometryVisual::move_conjugated_point(int point_index, sf::Vector2f position) {
+  if (!this->conjugated_inversion || point_index < 0 ||
+      point_index >= this->inversion_source_point_indices.size()) return false;
+  const int source_index = this->inversion_source_point_indices[point_index];
+  if (source_index < 0 || source_index >= this->inversion_control_active.size() ||
+      !this->inversion_control_active[source_index]) return false;
+  this->inversion_controls[source_index] = position;
+  this->regenerate_conjugated_inversion();
+  return true;
+}
+
+void GeometryVisual::regenerate_conjugated_inversion() {
+  if (!this->conjugated_inversion || this->fixed_inversion_circle < 0 ||
+      this->fixed_inversion_radius < AlgGeom::EPS) return;
+  GeometryVisual reconstructed(this->X_MENU_BORDER);
+  reconstructed.protocol.protocol = this->inversion_template_data;
+  const AlgGeom::Circle inversion(
+    AlgGeom::Point(this->fixed_inversion_center.x, this->fixed_inversion_center.y),
+    this->fixed_inversion_radius
+  );
+  for (int i = 0; i < this->inversion_control_active.size(); ++i) {
+    if (!this->inversion_control_active[i]) continue;
+    const sf::Vector2f control = this->inversion_controls[i];
+    if (AlgGeom::CoreGeometryTools::dist_points(
+          AlgGeom::Point(control.x, control.y), inversion.p) < AlgGeom::EPS) continue;
+    const AlgGeom::Point original = AlgGeom::CoreGeometryTools::inversion_point(
+      AlgGeom::Point(control.x, control.y), inversion
+    );
+    reconstructed.protocol.protocol["Point"][i]["location"] = {original.x, original.y};
+  }
+  reconstructed.rebuild();
+  if (this->fixed_inversion_circle >= reconstructed.circles.size()) return;
+  reconstructed.circles[this->fixed_inversion_circle].x_pos = this->fixed_inversion_center.x;
+  reconstructed.circles[this->fixed_inversion_circle].y_pos = this->fixed_inversion_center.y;
+  reconstructed.circles[this->fixed_inversion_circle].radius = this->fixed_inversion_radius;
+  this->build_inversion(reconstructed, this->fixed_inversion_circle);
+  this->conjugated_inversion = true;
+}
+
+bool GeometryVisual::build_forced_overlay(const GeometryVisual &source, int inversion_circle) {
+  if (inversion_circle < 0 || inversion_circle >= source.circles.size()) return false;
+  GeometryVisual forced(this->X_MENU_BORDER);
+  forced.begin_conjugated_inversion(source, inversion_circle);
+  for (int i = 0; i < forced.inversion_control_active.size(); ++i) {
+    if (!forced.inversion_control_active[i] || i >= source.points.size()) continue;
+    forced.inversion_controls[i] = sf::Vector2f(source.points[i].x_pos, source.points[i].y_pos);
+  }
+  forced.regenerate_conjugated_inversion();
+  auto light = [](sf::Color color) {
+    return sf::Color(
+      color.r + (255 - color.r) * 0.6f,
+      color.g + (255 - color.g) * 0.6f,
+      color.b + (255 - color.b) * 0.6f,
+      190
+    );
+  };
+
+  this->points = source.points;
+  this->lines = source.lines;
+  this->circles = source.circles;
+  this->conics = source.conics;
+  this->cubics = source.cubics;
+  this->texts = source.texts;
+  for (const GPoint &point : forced.points) {
+    GPoint overlay = point;
+    overlay.color = light(point.color);
+    overlay.label_visible = point.label.find("^{inv}") != std::string::npos;
+    overlay.index = this->points.size();
+    this->points.push_back(overlay);
+  }
+  for (const GLine &line : forced.lines) {
+    GLine overlay = line;
+    overlay.color = light(line.color);
+    overlay.index = this->lines.size();
+    this->lines.push_back(overlay);
+  }
+  for (const GCircle &circle : forced.circles) {
+    GCircle overlay = circle;
+    overlay.color = light(circle.color);
+    overlay.index = this->circles.size();
+    this->circles.push_back(overlay);
+  }
+  for (const GConic &conic : forced.conics) {
+    GConic overlay = conic;
+    overlay.color = light(conic.color);
+    overlay.index = this->conics.size();
+    this->conics.push_back(overlay);
+  }
+  return true;
+}
+
 int GeometryVisual::conic_searcher(GPoint point) const {
   const ld tolerance = EPS * this->camera_zoom;
   for (int i = 0; i < this->conics.size(); ++i) {
@@ -995,6 +1369,12 @@ void GeometryVisual::initialize_camera(const sf::RenderWindow &window) {
   if (this->camera_initialized) return;
   this->camera_view = window.getView();
   this->camera_initialized = true;
+}
+
+int GeometryVisual::point_at_screen(sf::RenderWindow& window, sf::Vector2i pixel) {
+  this->initialize_camera(window);
+  const sf::Vector2f world = window.mapPixelToCoords(pixel, this->camera_view);
+  return this->point_searcher(GPoint(world.x, world.y)).first.first;
 }
 
 void GeometryVisual::resize_camera(unsigned int width, unsigned int height) {
@@ -1197,6 +1577,11 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
         ? circle_search : -1;
       this->selected_conic = text_search == -1 && index_search == -1 && line_search == -1 &&
                              circle_search == -1 ? conic_search : -1;
+      const bool conjugated_movable = this->conjugated_inversion && index_search >= 0 &&
+        index_search < this->inversion_source_point_indices.size() &&
+        this->inversion_source_point_indices[index_search] >= 0 &&
+        this->inversion_source_point_indices[index_search] < this->inversion_control_active.size() &&
+        this->inversion_control_active[this->inversion_source_point_indices[index_search]];
       if (text_search != -1) {
         this->isDraggingText = true;
         this->text_follower = text_search;
@@ -1206,7 +1591,7 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
         this->isDragging = false;
         this->follower = -1;
       } else if (index_search != -1 &&
-                 (this->protocol.is_point_def_by_func(index_search, "newPoint") ||
+                 (conjugated_movable || this->protocol.is_point_def_by_func(index_search, "newPoint") ||
                   this->protocol.is_point_def_by_func(index_search, "newPointOnLine") ||
                   this->protocol.is_point_def_by_func(index_search, "newPointOnCircle") ||
                   this->protocol.is_point_def_by_func(index_search, "newPointOnConic"))) {
@@ -1626,7 +2011,10 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     const sf::Vector2i mousePixel = sf::Mouse::getPosition(window);
     const sf::Vector2f mousePos = window.mapPixelToCoords(mousePixel, this->camera_view);
 
-    if (this->protocol.is_point_def_by_func(follower, "newPointOnLine")) {
+    if (this->conjugated_inversion && follower >= 0 &&
+        follower < this->inversion_source_point_indices.size()) {
+      this->move_conjugated_point(follower, mousePos);
+    } else if (this->protocol.is_point_def_by_func(follower, "newPointOnLine")) {
       int line_index = this->protocol.get_point_info(follower)["args"][0];
       AlgGeom::Point new_loc = AlgGeom::CoreGeometryTools::project_point_to_line(
         AlgGeom::Point(mousePos.x, mousePos.y),
@@ -1668,7 +2056,7 @@ void GeometryVisual::handleEvent(const sf::Event& event, sf::RenderWindow& windo
     // this->points[follower] = GPoint(mousePos.x, mousePos.y);
     // std::cout << "data = " << protocol.get_string_format() << std::endl;
 
-    this->rebuild();
+    if (!this->conjugated_inversion) this->rebuild();
   }
 
   if (this->isDraggingText && this->text_follower >= 0 && this->text_follower < this->texts.size()) {
@@ -2309,13 +2697,28 @@ void GeometryVisual::draw(sf::RenderWindow& window, const sf::Font *font) {
         point_label = this->protocol.protocol["Point"][i].value("label", "");
       }
       if (!point.visible || !point.label_visible || point_label.empty()) continue;
-      sf::Text label;
-      label.setFont(*font);
-      label.setString(point_label);
-      label.setCharacterSize(14);
-      label.setFillColor(sf::Color::Black);
-      label.setPosition(point.x_pos + 7, point.y_pos - 19);
-      window.draw(label);
+      if (point_label.find('^') != std::string::npos || point_label.find('_') != std::string::npos) {
+        float cursor = point.x_pos + 7;
+        for (const AnnotationRun &run : math_runs(point_label)) {
+          sf::Text label;
+          label.setFont(*font);
+          label.setString(run.value);
+          label.setCharacterSize(run.size == 18 ? 14 : 10);
+          label.setStyle(sf::Text::Italic);
+          label.setFillColor(sf::Color::Black);
+          label.setPosition(cursor, point.y_pos - 19 + run.offset * 0.7f);
+          cursor = label.findCharacterPos(label.getString().getSize()).x;
+          window.draw(label);
+        }
+      } else {
+        sf::Text label;
+        label.setFont(*font);
+        label.setString(point_label);
+        label.setCharacterSize(14);
+        label.setFillColor(sf::Color::Black);
+        label.setPosition(point.x_pos + 7, point.y_pos - 19);
+        window.draw(label);
+      }
     }
   }
   window.setView(previous_view);

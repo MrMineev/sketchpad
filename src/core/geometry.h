@@ -56,6 +56,16 @@ class GeometryVisual {
   bool isPanning = false;
   sf::Vector2i pan_last_pixel;
   float camera_zoom = 1;
+  bool conjugated_inversion = false;
+  json inversion_template_data;
+  sf::Vector2f fixed_inversion_center;
+  float fixed_inversion_radius = 0;
+  int fixed_inversion_circle = -1;
+  std::vector<int> inversion_source_point_indices;
+  std::vector<sf::Vector2f> inversion_controls;
+  std::vector<bool> inversion_control_active;
+
+  void regenerate_conjugated_inversion();
 
  public:
   std::vector<GPoint> points;
@@ -102,6 +112,7 @@ class GeometryVisual {
 
   std::pair<std::pair<int, std::pair<int, int>>, GPoint> point_searcher(GPoint p);
   bool handleCameraEvent(const sf::Event& event, sf::RenderWindow& window);
+  int point_at_screen(sf::RenderWindow& window, sf::Vector2i pixel);
   void resize_camera(unsigned int width, unsigned int height);
   void handleEvent(const sf::Event& event, sf::RenderWindow& window, gui::Menu& menu);
   void draw(sf::RenderWindow& window, const sf::Font *font = nullptr);
@@ -118,6 +129,12 @@ class GeometryVisual {
   std::vector<int> take_triangle_center_request();
   void show_all();
   void build_inversion(const GeometryVisual &source, int inversion_circle);
+  void begin_conjugated_inversion(const GeometryVisual &source, int inversion_circle);
+  bool move_conjugated_point(int point_index, sf::Vector2f position);
+  bool build_forced_overlay(const GeometryVisual &source, int inversion_circle);
+  void materialize();
+  bool build_overlay(const GeometryVisual &source, const GeometryVisual &inverted,
+                     const std::vector<std::pair<int, int>> &matches);
 
   void save_configuration(std::string &filepath);
   void load_configuration(std::string &filepath);
